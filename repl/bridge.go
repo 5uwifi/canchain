@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package repl
 
 import (
@@ -19,7 +14,7 @@ import (
 )
 
 type bridge struct {
-	client   *rpc.Client  // RPC client to execute Ethereum requests through
+	client   *rpc.Client  // RPC client to execute CANChain requests through
 	prompter UserPrompter // Input prompter to allow interactive user feedback
 	printer  io.Writer    // Output writer to serialize any display strings to
 }

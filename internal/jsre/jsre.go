@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package jsre
 
 import (
@@ -251,21 +246,17 @@ func (re *JSRE) Set(ns string, v interface{}) (err error) {
 func (re *JSRE) loadScript(call otto.FunctionCall) otto.Value {
 	file, err := call.Argument(0).ToString()
 	if err != nil {
-		// TODO: throw exception
 		return otto.FalseValue()
 	}
 	file = common.AbsolutePath(re.assetPath, file)
 	source, err := ioutil.ReadFile(file)
 	if err != nil {
-		// TODO: throw exception
 		return otto.FalseValue()
 	}
 	if _, err := compileAndRun(call.Otto, file, source); err != nil {
-		// TODO: throw exception
 		fmt.Println("err:", err)
 		return otto.FalseValue()
 	}
-	// TODO: return evaluation result
 	return otto.TrueValue()
 }
 

@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package repl
 
 import (
@@ -44,7 +39,6 @@ type UserPrompter interface {
 	SetWordCompleter(completer WordCompleter)
 }
 
-// "Word"}, "!!!") to have "Hello, world!!!".
 type WordCompleter func(line string, pos int) (string, []string, string)
 
 type terminalPrompter struct {

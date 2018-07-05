@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package params
 
 import (
@@ -28,10 +23,9 @@ var (
 		EIP158Block:         big.NewInt(0),
 		ByzantiumBlock:      nil,
 		ConstantinopleBlock: nil,
-		Ethash:              new(EthashConfig),
+		Canhash:             new(CanhashConfig),
 	}
 
-	// TestnetChainConfig contains the chain parameters to run a node on the Ropsten test network.
 	TestnetChainConfig = &ChainConfig{
 		ChainID:             big.NewInt(3),
 		HomesteadBlock:      big.NewInt(0),
@@ -41,25 +35,13 @@ var (
 		EIP158Block:         big.NewInt(0),
 		ByzantiumBlock:      nil,
 		ConstantinopleBlock: nil,
-		Ethash:              new(EthashConfig),
+		Canhash:             new(CanhashConfig),
 	}
 
-	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced
-	// and accepted by the Ethereum core developers into the Ethash consensus.
-	//
-	// This configuration is intentionally not using keyed fields to force anyone
-	// adding flags to the config to also have to set these fields.
-	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, new(EthashConfig), nil}
-
-	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
-	// and accepted by the Ethereum core developers into the Clique consensus.
-	//
-	// This configuration is intentionally not using keyed fields to force anyone
-	// adding flags to the config to also have to set these fields.
+	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, new(CanhashConfig), nil}
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), big.NewInt(0), big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, nil, &CliqueConfig{Period: 0, Epoch: 30000}}
 
-	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, new(EthashConfig), nil}
-	TestRules       = TestChainConfig.Rules(new(big.Int))
+	TestChainConfig = &ChainConfig{big.NewInt(1), big.NewInt(0), big.NewInt(0), common.Hash{}, big.NewInt(0), big.NewInt(0), big.NewInt(0), nil, new(CanhashConfig), nil}
 )
 
 //
@@ -79,13 +61,13 @@ type ChainConfig struct {
 	ConstantinopleBlock *big.Int `json:"constantinopleBlock,omitempty"` // Constantinople switch block (nil = no fork, 0 = already activated)
 
 	// Various consensus engines
-	Ethash *EthashConfig `json:"canhash,omitempty"`
-	Clique *CliqueConfig `json:"clique,omitempty"`
+	Canhash *CanhashConfig `json:"canhash,omitempty"`
+	Clique  *CliqueConfig  `json:"clique,omitempty"`
 }
 
-type EthashConfig struct{}
+type CanhashConfig struct{}
 
-func (c *EthashConfig) String() string {
+func (c *CanhashConfig) String() string {
 	return "canhash"
 }
 
@@ -101,8 +83,8 @@ func (c *CliqueConfig) String() string {
 func (c *ChainConfig) String() string {
 	var engine interface{}
 	switch {
-	case c.Ethash != nil:
-		engine = c.Ethash
+	case c.Canhash != nil:
+		engine = c.Canhash
 	case c.Clique != nil:
 		engine = c.Clique
 	default:

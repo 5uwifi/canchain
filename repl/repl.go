@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package repl
 
 import (
@@ -87,11 +82,11 @@ func New(config Config) (*Console, error) {
 func (c *Console) init(preload []string) error {
 	// Initialize the JavaScript <-> Go RPC bridge
 	bridge := newBridge(c.client, c.prompter, c.printer)
-	c.jsre.Set("jeth", struct{}{})
+	c.jsre.Set("jcan", struct{}{})
 
-	jethObj, _ := c.jsre.Get("jeth")
-	jethObj.Object().Set("send", bridge.Send)
-	jethObj.Object().Set("sendAsync", bridge.Send)
+	jcanObj, _ := c.jsre.Get("jcan")
+	jcanObj.Object().Set("send", bridge.Send)
+	jcanObj.Object().Set("sendAsync", bridge.Send)
 
 	consoleObj, _ := c.jsre.Get("console")
 	consoleObj.Object().Set("log", c.consoleOutput)
@@ -107,7 +102,7 @@ func (c *Console) init(preload []string) error {
 	if _, err := c.jsre.Run("var Web3 = require('web3');"); err != nil {
 		return fmt.Errorf("web3 require: %v", err)
 	}
-	if _, err := c.jsre.Run("var web3 = new Web3(jeth);"); err != nil {
+	if _, err := c.jsre.Run("var web3 = new Web3(jcan);"); err != nil {
 		return fmt.Errorf("web3 provider: %v", err)
 	}
 	// Load the supported APIs into the JavaScript runtime environment
@@ -115,7 +110,7 @@ func (c *Console) init(preload []string) error {
 	if err != nil {
 		return fmt.Errorf("api modules: %v", err)
 	}
-	flatten := "var eth = web3.eth; var personal = web3.personal; "
+	flatten := "var can = web3.eth; var personal = web3.personal; "
 	for api := range apis {
 		if api == "web3" {
 			continue // manually mapped or ignore
@@ -146,20 +141,20 @@ func (c *Console) init(preload []string) error {
 		}
 		// Override the openWallet, unlockAccount, newAccount and sign methods since
 		// these require user interaction. Assign these method in the Console the
-		// original web3 callbacks. These will be called by the jeth.* methods after
+		// original web3 callbacks. These will be called by the jcan.* methods after
 		// they got the password from the user and send the original web3 request to
 		// the backend.
 		if obj := personal.Object(); obj != nil { // make sure the personal api is enabled over the interface
-			if _, err = c.jsre.Run(`jeth.openWallet = personal.openWallet;`); err != nil {
+			if _, err = c.jsre.Run(`jcan.openWallet = personal.openWallet;`); err != nil {
 				return fmt.Errorf("personal.openWallet: %v", err)
 			}
-			if _, err = c.jsre.Run(`jeth.unlockAccount = personal.unlockAccount;`); err != nil {
+			if _, err = c.jsre.Run(`jcan.unlockAccount = personal.unlockAccount;`); err != nil {
 				return fmt.Errorf("personal.unlockAccount: %v", err)
 			}
-			if _, err = c.jsre.Run(`jeth.newAccount = personal.newAccount;`); err != nil {
+			if _, err = c.jsre.Run(`jcan.newAccount = personal.newAccount;`); err != nil {
 				return fmt.Errorf("personal.newAccount: %v", err)
 			}
-			if _, err = c.jsre.Run(`jeth.sign = personal.sign;`); err != nil {
+			if _, err = c.jsre.Run(`jcan.sign = personal.sign;`); err != nil {
 				return fmt.Errorf("personal.sign: %v", err)
 			}
 			obj.Set("openWallet", bridge.OpenWallet)
