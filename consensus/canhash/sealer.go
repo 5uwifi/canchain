@@ -94,13 +94,13 @@ func (canhash *Canhash) mine(block *types.Block, id int, seed uint64, abort chan
 		nonce    = seed
 	)
 	logger := log4j.New("miner", id)
-	logger.Trace("Started ethash search for new nonces", "seed", seed)
+	logger.Trace("Started canhash search for new nonces", "seed", seed)
 search:
 	for {
 		select {
 		case <-abort:
 			// Mining terminated, update stats and abort
-			logger.Trace("Ethash nonce search aborted", "attempts", nonce-seed)
+			logger.Trace("Canhash nonce search aborted", "attempts", nonce-seed)
 			canhash.hashrate.Mark(attempts)
 			break search
 
@@ -122,9 +122,9 @@ search:
 				// Seal and return a block (if still needed)
 				select {
 				case found <- block.WithSeal(header):
-					logger.Trace("Ethash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
+					logger.Trace("Canhash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
 				case <-abort:
-					logger.Trace("Ethash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
+					logger.Trace("Canhash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
 				}
 				break search
 			}

@@ -43,10 +43,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.SkipBcVersionCheck = c.SkipBcVersionCheck
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
-	enc.Etherbase = c.Etherbase
+	enc.Etherbase = c.Canerbase
 	enc.MinerThreads = c.MinerThreads
 	enc.ExtraData = c.ExtraData
-	enc.GasPrice = c.GasPrice
+	enc.GasPrice = c.FeePrice
 	enc.Ethash = c.Canhash
 	enc.TxPool = c.TxPool
 	enc.GPO = c.GPO
@@ -104,7 +104,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		c.DatabaseCache = *dec.DatabaseCache
 	}
 	if dec.Etherbase != nil {
-		c.Etherbase = *dec.Etherbase
+		c.Canerbase = *dec.Etherbase
 	}
 	if dec.MinerThreads != nil {
 		c.MinerThreads = *dec.MinerThreads
@@ -113,7 +113,7 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		c.ExtraData = *dec.ExtraData
 	}
 	if dec.GasPrice != nil {
-		c.GasPrice = dec.GasPrice
+		c.FeePrice = dec.GasPrice
 	}
 	if dec.Ethash != nil {
 		c.Canhash = *dec.Ethash

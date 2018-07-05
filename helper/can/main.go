@@ -76,8 +76,8 @@ var (
 		utils.ListenPortFlag,
 		utils.MaxPeersFlag,
 		utils.MaxPendingPeersFlag,
-		utils.EtherbaseFlag,
-		utils.GasPriceFlag,
+		utils.CanerbaseFlag,
+		utils.FeePriceFlag,
 		utils.MinerThreadsFlag,
 		utils.MiningEnabledFlag,
 		utils.TargetGasLimitFlag,
@@ -288,7 +288,7 @@ func startNode(ctx *cli.Context, stack *node.Node) {
 			}
 		}
 		// Set the gas price to the limits from the CLI and start mining
-		canchain.TxPool().SetGasPrice(utils.GlobalBig(ctx, utils.GasPriceFlag.Name))
+		canchain.TxPool().SetGasPrice(utils.GlobalBig(ctx, utils.FeePriceFlag.Name))
 		if err := canchain.StartMining(true); err != nil {
 			utils.Fatalf("Failed to start mining: %v", err)
 		}

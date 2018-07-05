@@ -112,8 +112,8 @@ func New(ctx *node.ServiceContext, config *Config) (*Ledger, error) {
 		engine:         CreateConsensusEngine(ctx, &config.Canhash, chainConfig, chainDb),
 		shutdownChan:   make(chan bool),
 		networkID:      config.NetworkId,
-		gasPrice:       config.GasPrice,
-		etherbase:      config.Etherbase,
+		gasPrice:       config.FeePrice,
+		etherbase:      config.Canerbase,
 		bloomRequests:  make(chan chan *bloombits.Retrieval),
 		bloomIndexer:   NewBloomIndexer(chainDb, params.BloomBitsBlocks),
 	}
@@ -157,7 +157,7 @@ func New(ctx *node.ServiceContext, config *Config) (*Ledger, error) {
 	eth.APIBackend = &EthAPIBackend{eth, nil}
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
-		gpoParams.Default = config.GasPrice
+		gpoParams.Default = config.FeePrice
 	}
 	eth.APIBackend.gpo = feeprice.NewOracle(eth.APIBackend, gpoParams)
 

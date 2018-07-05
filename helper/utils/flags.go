@@ -267,15 +267,15 @@ var (
 		Usage: "Target gas limit sets the artificial target gas floor for the blocks to mine",
 		Value: params.GenesisGasLimit,
 	}
-	EtherbaseFlag = cli.StringFlag{
-		Name:  "etherbase",
+	CanerbaseFlag = cli.StringFlag{
+		Name:  "canerbase",
 		Usage: "Public address for block mining rewards (default = first account created)",
 		Value: "0",
 	}
-	GasPriceFlag = BigFlag{
-		Name:  "gasprice",
-		Usage: "Minimal gas price to accept for mining a transactions",
-		Value: ledger.DefaultConfig.GasPrice,
+	FeePriceFlag = BigFlag{
+		Name:  "feeprice",
+		Usage: "Minimal fee price to accept for mining a transactions",
+		Value: ledger.DefaultConfig.FeePrice,
 	}
 	ExtraDataFlag = cli.StringFlag{
 		Name:  "extradata",
@@ -681,12 +681,12 @@ func MakeAddress(ks *keystore.KeyStore, account string) (accounts.Account, error
 }
 
 func setEtherbase(ctx *cli.Context, ks *keystore.KeyStore, cfg *ledger.Config) {
-	if ctx.GlobalIsSet(EtherbaseFlag.Name) {
-		account, err := MakeAddress(ks, ctx.GlobalString(EtherbaseFlag.Name))
+	if ctx.GlobalIsSet(CanerbaseFlag.Name) {
+		account, err := MakeAddress(ks, ctx.GlobalString(CanerbaseFlag.Name))
 		if err != nil {
-			Fatalf("Option %q: %v", EtherbaseFlag.Name, err)
+			Fatalf("Option %q: %v", CanerbaseFlag.Name, err)
 		}
-		cfg.Etherbase = account.Address
+		cfg.Canerbase = account.Address
 	}
 }
 
@@ -931,8 +931,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ledger.Config) {
 	if ctx.GlobalIsSet(ExtraDataFlag.Name) {
 		cfg.ExtraData = []byte(ctx.GlobalString(ExtraDataFlag.Name))
 	}
-	if ctx.GlobalIsSet(GasPriceFlag.Name) {
-		cfg.GasPrice = GlobalBig(ctx, GasPriceFlag.Name)
+	if ctx.GlobalIsSet(FeePriceFlag.Name) {
+		cfg.FeePrice = GlobalBig(ctx, FeePriceFlag.Name)
 	}
 	if ctx.GlobalIsSet(VMEnableDebugFlag.Name) {
 		// TODO(fjl): force-enable this in --dev mode
@@ -969,8 +969,8 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *ledger.Config) {
 		log4j.Info("Using developer account", "address", developer.Address)
 
 		cfg.Genesis = kernel.DeveloperGenesisBlock(uint64(ctx.GlobalInt(DeveloperPeriodFlag.Name)), developer.Address)
-		if !ctx.GlobalIsSet(GasPriceFlag.Name) {
-			cfg.GasPrice = big.NewInt(1)
+		if !ctx.GlobalIsSet(FeePriceFlag.Name) {
+			cfg.FeePrice = big.NewInt(1)
 		}
 	}
 	// TODO(fjl): move trie cache generations into config

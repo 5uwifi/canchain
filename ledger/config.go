@@ -36,7 +36,7 @@ var DefaultConfig = Config{
 	DatabaseCache: 768,
 	TrieCache:     256,
 	TrieTimeout:   60 * time.Minute,
-	GasPrice:      big.NewInt(18 * params.Shannon),
+	FeePrice:      big.NewInt(18 * params.Shannon),
 
 	TxPool: kernel.DefaultTxPoolConfig,
 	GPO: feeprice.Config{
@@ -82,10 +82,10 @@ type Config struct {
 	TrieTimeout        time.Duration
 
 	// Mining-related options
-	Etherbase    common.Address `toml:",omitempty"`
+	Canerbase    common.Address `toml:",omitempty"`
 	MinerThreads int            `toml:",omitempty"`
 	ExtraData    []byte         `toml:",omitempty"`
-	GasPrice     *big.Int
+	FeePrice     *big.Int
 
 	// Ethash options
 	Canhash canhash.Config
