@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package ledger
 
 import (
@@ -48,8 +43,8 @@ var DefaultConfig = Config{
 func init() {
 	home := os.Getenv("HOME")
 	if home == "" {
-		if user, err := user.Current(); err == nil {
-			home = user.HomeDir
+		if u, err := user.Current(); err == nil {
+			home = u.HomeDir
 		}
 	}
 	if runtime.GOOS == "windows" {
