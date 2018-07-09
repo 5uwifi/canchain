@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package common
 
 import (
@@ -224,6 +219,7 @@ func (ma *MixedcaseAddress) String() string {
 }
 
 func (ma *MixedcaseAddress) ValidChecksum() bool {
+	fmt.Println(ma.original, ma.addr.Hex())
 	return ma.original == ma.addr.Hex()
 }
 
