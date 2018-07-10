@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 // +build freebsd
 
 package fdlimit
