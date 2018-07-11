@@ -1,9 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
-//
 package keystore
 
 import (

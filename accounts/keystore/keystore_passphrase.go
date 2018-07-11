@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 /*
 
 This key store behaves as KeyStorePlain with the difference that
