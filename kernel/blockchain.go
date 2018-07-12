@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package kernel
 
 import (
@@ -58,8 +53,6 @@ type CacheConfig struct {
 	TrieTimeLimit time.Duration // Time limit after which to flush the current in-memory trie to disk
 }
 
-//
-//
 type BlockChain struct {
 	chainConfig *params.ChainConfig // Chain & network configuration
 	cacheConfig *CacheConfig        // Cache configuration for pruning
