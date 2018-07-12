@@ -245,8 +245,8 @@ func (c *Console) Welcome() {
 	fmt.Fprintf(c.printer, "Welcome to the CAN JavaScript console!\n\n")
 	c.jsre.Run(`
 		console.log("instance: " + web3.version.node);
-		console.log("coinbase: " + eth.coinbase);
-		console.log("at block: " + eth.blockNumber + " (" + new Date(1000 * eth.getBlock(eth.blockNumber).timestamp) + ")");
+		console.log("coinbase: " + can.coinbase);
+		console.log("at block: " + can.blockNumber + " (" + new Date(1000 * can.getBlock(can.blockNumber).timestamp) + ")");
 		console.log(" datadir: " + admin.datadir);
 	`)
 	// List all the supported modules for the user to call

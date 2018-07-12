@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package web3ext
 
 var Modules = map[string]string{

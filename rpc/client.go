@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package rpc
 
 import (
@@ -129,14 +124,10 @@ func (op *requestOp) wait(ctx context.Context) (*jsonrpcMessage, error) {
 	}
 }
 
-//
-//
-//
 func Dial(rawurl string) (*Client, error) {
 	return DialContext(context.Background(), rawurl)
 }
 
-//
 func DialContext(ctx context.Context, rawurl string) (*Client, error) {
 	u, err := url.Parse(rawurl)
 	if err != nil {

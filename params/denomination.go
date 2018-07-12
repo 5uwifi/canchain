@@ -1,12 +1,5 @@
-//
-// (at your option) any later version.
-//
-//
-
 package params
 
-//
-//
 const (
 	Wei      = 1
 	Ada      = 1e3

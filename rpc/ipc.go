@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package rpc
 
 import (
@@ -27,7 +22,6 @@ func (srv *Server) ServeListener(l net.Listener) error {
 	}
 }
 
-//
 func DialIPC(ctx context.Context, endpoint string) (*Client, error) {
 	return newClient(ctx, func(ctx context.Context) (net.Conn, error) {
 		return newIPCConnection(ctx, endpoint)
