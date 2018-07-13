@@ -1,10 +1,7 @@
-//
-// (at your option) any later version.
-//
-//
-
 // +build none
 
+// This program generates contract/code.go, which contains the chequebook code
+// after deployment.
 package main
 
 import (

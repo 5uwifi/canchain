@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package abi
 
 import (
@@ -19,9 +14,6 @@ type Method struct {
 	Outputs Arguments
 }
 
-//
-//
-//
 func (method Method) Sig() string {
 	types := make([]string, len(method.Inputs))
 	i := 0

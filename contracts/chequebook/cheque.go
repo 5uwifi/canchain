@@ -1,11 +1,7 @@
-//
-// (at your option) any later version.
-//
-//
-
-//
 package chequebook
 
+//go:generate abigen --sol contract/chequebook.sol --exc contract/mortal.sol:mortal,contract/owned.sol:owned --pkg contract --out contract/chequebook.go
+//go:generate go run ./gencode.go
 
 import (
 	"bytes"
@@ -28,7 +24,6 @@ import (
 	"github.com/5uwifi/canchain/basis/log4j"
 	"github.com/5uwifi/canchain/basis/swarm/services/swap/swap"
 )
-
 
 // * setting current balance on peer's chequebook
 // * sending the transaction to cash the cheque
