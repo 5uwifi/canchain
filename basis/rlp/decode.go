@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package rlp
 
 import (
@@ -39,32 +34,10 @@ var (
 	errDecodeIntoNil = errors.New("rlp: pointer given to Decode must not be nil")
 )
 
-//
 type Decoder interface {
 	DecodeRLP(*Stream) error
 }
 
-//
-//
-//
-//
-//
-// "nil" and "-".
-//
-//
-//
-//
-//     }
-//
-//
-//
-//
-//
-//	  []interface{}, for RLP lists
-//	  []byte, for RLP strings
-//
-//
-//
 func Decode(r io.Reader, val interface{}) error {
 	// TODO: this could use a Stream from a pool.
 	return NewStream(r, 0).Decode(val)

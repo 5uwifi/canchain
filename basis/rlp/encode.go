@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package rlp
 
 import (
@@ -32,15 +27,6 @@ type Encoder interface {
 	EncodeRLP(io.Writer) error
 }
 
-//
-//
-//
-//
-//
-//
-//
-//
-//
 func Encode(w io.Writer, val interface{}) error {
 	if outer, ok := w.(*encbuf); ok {
 		// Encode was called by some type's EncodeRLP.
