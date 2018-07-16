@@ -1,10 +1,4 @@
-//
-// (at your option) any later version.
-//
-//
-
 // +build ios linux,arm64 windows !darwin,!freebsd,!linux,!netbsd,!solaris
-
 
 package keystore
 

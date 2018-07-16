@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 // +build darwin,!ios freebsd linux,!arm64 netbsd solaris
 
 package keystore

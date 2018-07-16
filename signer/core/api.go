@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package core
 
 import (
@@ -16,7 +11,6 @@ import (
 
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/accounts/keystore"
-	"github.com/5uwifi/canchain/accounts/usbwallet"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/basis/crypto"
@@ -182,22 +176,6 @@ func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abi
 	// support password based accounts
 	if len(ksLocation) > 0 {
 		backends = append(backends, keystore.NewKeyStore(ksLocation, n, p))
-	}
-	if !noUSB {
-		// Start a USB hub for Ledger hardware wallets
-		if ledgerhub, err := usbwallet.NewLedgerHub(); err != nil {
-			log4j.Warn(fmt.Sprintf("Failed to start Ledger hub, disabling: %v", err))
-		} else {
-			backends = append(backends, ledgerhub)
-			log4j.Debug("Ledger support enabled")
-		}
-		// Start a USB hub for Trezor hardware wallets
-		if trezorhub, err := usbwallet.NewTrezorHub(); err != nil {
-			log4j.Warn(fmt.Sprintf("Failed to start Trezor hub, disabling: %v", err))
-		} else {
-			backends = append(backends, trezorhub)
-			log4j.Debug("Trezor support enabled")
-		}
 	}
 	return &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb)}
 }

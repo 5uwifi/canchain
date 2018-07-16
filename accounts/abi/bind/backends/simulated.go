@@ -277,7 +277,6 @@ func (b *SimulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 	return nil
 }
 
-//
 func (b *SimulatedBackend) FilterLogs(ctx context.Context, query canchain.FilterQuery) ([]types.Log, error) {
 	// Initialize unset filter boundaried to run from genesis to chain head
 	from := int64(0)

@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package accounts
 
 import (
@@ -14,18 +9,11 @@ import (
 )
 
 var DefaultRootDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0}
-
 var DefaultBaseDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0, 0}
-
 var DefaultLedgerBaseDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0}
 
-//
-//
-//
-//
 type DerivationPath []uint32
 
-//
 func ParseDerivationPath(path string) (DerivationPath, error) {
 	var result DerivationPath
 

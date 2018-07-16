@@ -11,7 +11,6 @@ import (
 
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/accounts/keystore"
-	"github.com/5uwifi/canchain/accounts/usbwallet"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/basis/crypto"
 	"github.com/5uwifi/canchain/basis/log4j"
@@ -377,20 +376,6 @@ func makeAccountManager(conf *Config) (*accounts.Manager, string, error) {
 	// Assemble the account manager and supported backends
 	backends := []accounts.Backend{
 		keystore.NewKeyStore(keydir, scryptN, scryptP),
-	}
-	if !conf.NoUSB {
-		// Start a USB hub for Ledger hardware wallets
-		if ledgerhub, err := usbwallet.NewLedgerHub(); err != nil {
-			log4j.Warn(fmt.Sprintf("Failed to start Ledger hub, disabling: %v", err))
-		} else {
-			backends = append(backends, ledgerhub)
-		}
-		// Start a USB hub for Trezor hardware wallets
-		if trezorhub, err := usbwallet.NewTrezorHub(); err != nil {
-			log4j.Warn(fmt.Sprintf("Failed to start Trezor hub, disabling: %v", err))
-		} else {
-			backends = append(backends, trezorhub)
-		}
 	}
 	return accounts.NewManager(backends...), ephemeral, nil
 }

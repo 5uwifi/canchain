@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package bind
 
 import "github.com/5uwifi/canchain/accounts/abi"

@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package accounts
 
 import (
@@ -12,9 +7,6 @@ import (
 	"strings"
 )
 
-//
-//
-//
 type URL struct {
 	Scheme string // Protocol scheme to identify a capable account backend
 	Path   string // Path for the backend to identify a unique entity
@@ -65,10 +57,6 @@ func (u *URL) UnmarshalJSON(input []byte) error {
 	return nil
 }
 
-//
-//   -1 if x <  y
-//   +1 if x >  y
-//
 func (u URL) Cmp(url URL) int {
 	if u.Scheme == url.Scheme {
 		return strings.Compare(u.Path, url.Path)
