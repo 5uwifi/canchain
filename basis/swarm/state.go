@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package swarm
 
 type Voidstore struct {
