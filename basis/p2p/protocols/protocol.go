@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Package protocols is an extension to p2p. It offers a user friendly simple way to define

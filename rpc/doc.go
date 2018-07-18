@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Package rpc provides access to the exported methods of an object across a network

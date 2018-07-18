@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Package whisperv5 implements the Whisper protocol (version 5).

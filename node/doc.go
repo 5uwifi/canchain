@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Package node sets up multi-protocol Ethereum nodes.

@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 // +build darwin dragonfly freebsd linux nacl netbsd openbsd solaris
 

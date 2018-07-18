@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Package pot (proximity order tree) implements a container similar to a binary tree.

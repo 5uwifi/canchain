@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 Show nicely (but simple) formatted HTML error pages (or respond with JSON

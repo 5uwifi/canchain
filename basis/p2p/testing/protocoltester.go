@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 the p2p/testing package provides a unit test scheme to check simple

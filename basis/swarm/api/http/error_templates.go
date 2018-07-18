@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 /*
 We use html templates to handle simple but as informative as possible error pages.

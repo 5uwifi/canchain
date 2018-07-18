@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 
 package p2p

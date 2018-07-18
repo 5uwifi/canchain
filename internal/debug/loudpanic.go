@@ -1,7 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
 
 // +build go1.6
 
