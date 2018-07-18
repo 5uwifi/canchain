@@ -1,8 +1,3 @@
-//
-// (at your option) any later version.
-//
-//
-
 package core
 
 import (
@@ -13,9 +8,6 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 )
-
-// - ABI-data validation
-// - Transaction semantics validation
 
 func (vs *ValidationMessages) crit(msg string) {
 	vs.Messages = append(vs.Messages, ValidationInfo{"CRITICAL", msg})
