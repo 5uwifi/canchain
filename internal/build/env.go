@@ -62,7 +62,7 @@ func Env() Environment {
 }
 
 func LocalEnv() Environment {
-	env := applyEnvFlags(Environment{Name: "local", Repo: "ethereum/go-ethereum"})
+	env := applyEnvFlags(Environment{Name: "local", Repo: "5uwifi/canchain"})
 
 	head := readGitFile("HEAD")
 	if splits := strings.Split(head, " "); len(splits) == 2 {
