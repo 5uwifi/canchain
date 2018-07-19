@@ -2235,7 +2235,7 @@ var toTwosComplement = function (number) {
  * @return {Boolean}
 */
 var isStrictAddress = function (address) {
-    return /^0x[0-9a-f]{40}$/i.test(address);
+    return /^0x[0-9a-f]{52}$/i.test(address);
 };
 
 /**
@@ -2246,10 +2246,10 @@ var isStrictAddress = function (address) {
  * @return {Boolean}
 */
 var isAddress = function (address) {
-    if (!/^(0x)?[0-9a-f]{40}$/i.test(address)) {
+    if (!/^(0x)?[0-9a-f]{52}$/i.test(address)) {
         // check if it has the basic requirements of an address
         return false;
-    } else if (/^(0x)?[0-9a-f]{40}$/.test(address) || /^(0x)?[0-9A-F]{40}$/.test(address)) {
+    } else if (/^(0x)?[0-9a-f]{52}$/.test(address) || /^(0x)?[0-9A-F]{52}$/.test(address)) {
         // If it's all small caps or all all caps, return true
         return true;
     } else {
@@ -2270,7 +2270,7 @@ var isChecksumAddress = function (address) {
     address = address.replace('0x','');
     var addressHash = sha3(address.toLowerCase());
 
-    for (var i = 0; i < 40; i++ ) {
+    for (var i = 0; i < 52; i++ ) {
         // the nth letter should be uppercase if the nth digit of casemap is 1
         if ((parseInt(addressHash[i], 16) > 7 && address[i].toUpperCase() !== address[i]) || (parseInt(addressHash[i], 16) <= 7 && address[i].toLowerCase() !== address[i])) {
             return false;
@@ -2318,11 +2318,11 @@ var toAddress = function (address) {
         return address;
     }
 
-    if (/^[0-9a-f]{40}$/.test(address)) {
+    if (/^[0-9a-f]{52}$/.test(address)) {
         return '0x' + address;
     }
 
-    return '0x' + padLeft(toHex(address).substr(2), 40);
+    return '0x' + padLeft(toHex(address).substr(2), 52);
 };
 
 /**
@@ -4578,7 +4578,7 @@ Iban.prototype.isDirect = function () {
  * @returns {Boolean} true if it is, otherwise false
  */
 Iban.prototype.isIndirect = function () {
-    return this._iban.length === 20;
+    return this._iban.length === 26;
 };
 
 /**
