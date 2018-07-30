@@ -13,7 +13,6 @@ import (
 	"github.com/5uwifi/canchain/basis/rlp"
 )
 
-
 var (
 	ErrInvalidSig = errors.New("invalid transaction v, r, s values")
 )
@@ -178,8 +177,6 @@ func (tx *Transaction) Size() common.StorageSize {
 	return common.StorageSize(c)
 }
 
-//
-//
 func (tx *Transaction) AsMessage(s Signer) (Message, error) {
 	msg := Message{
 		nonce:      tx.data.AccountNonce,
@@ -274,7 +271,6 @@ type TransactionsByPriceAndNonce struct {
 	signer Signer                          // Signer for the set of transactions
 }
 
-//
 func NewTransactionsByPriceAndNonce(signer Signer, txs map[common.Address]Transactions) *TransactionsByPriceAndNonce {
 	// Initialize a price based heap with the head transactions
 	heads := make(TxByPrice, 0, len(txs))
@@ -318,7 +314,6 @@ func (t *TransactionsByPriceAndNonce) Pop() {
 	heap.Pop(&t.heads)
 }
 
-//
 type Message struct {
 	to         *common.Address
 	from       common.Address

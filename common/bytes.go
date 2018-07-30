@@ -2,7 +2,6 @@ package common
 
 import "encoding/hex"
 
-//
 func ToHex(b []byte) string {
 	hex := Bytes2Hex(b)
 	if len(hex) == 0 {
