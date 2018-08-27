@@ -1,4 +1,3 @@
-
 package rules
 
 import (
@@ -8,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/privacy/canapi"
 	"github.com/5uwifi/canchain/signer/core"
 	"github.com/5uwifi/canchain/signer/rules/deps"
 	"github.com/5uwifi/canchain/signer/storage"
@@ -30,10 +29,10 @@ func consoleOutput(call otto.FunctionCall) otto.Value {
 }
 
 type rulesetUI struct {
-	next        core.SignerUI // The next handler, for manual processing
+	next        core.SignerUI
 	storage     storage.Storage
 	credentials storage.Storage
-	jsRules     string // The rules to use
+	jsRules     string
 }
 
 func NewRuleEvaluator(next core.SignerUI, jsbackend, credentialsBackend storage.Storage) (*rulesetUI, error) {
@@ -53,15 +52,12 @@ func (r *rulesetUI) Init(javascriptRules string) error {
 }
 func (r *rulesetUI) execute(jsfunc string, jsarg interface{}) (otto.Value, error) {
 
-	// Instantiate a fresh vm engine every time
 	vm := otto.New()
-	// Set the native callbacks
 	consoleObj, _ := vm.Get("console")
 	consoleObj.Object().Set("log", consoleOutput)
 	consoleObj.Object().Set("error", consoleOutput)
 	vm.Set("storage", r.storage)
 
-	// Load bootstrap libraries
 	script, err := vm.Compile("bignumber.js", BigNumber_JS)
 	if err != nil {
 		log4j.Warn("Failed loading libraries", "err", err)
@@ -69,24 +65,17 @@ func (r *rulesetUI) execute(jsfunc string, jsarg interface{}) (otto.Value, error
 	}
 	vm.Run(script)
 
-	// Run the actual rule implementation
 	_, err = vm.Run(r.jsRules)
 	if err != nil {
 		log4j.Warn("Execution failed", "err", err)
 		return otto.UndefinedValue(), err
 	}
 
-	// And the actual call
-	// All calls are objects with the parameters being keys in that object.
-	// To provide additional insulation between js and go, we serialize it into JSON on the Go-side,
-	// and deserialize it on the JS side.
-
 	jsonbytes, err := json.Marshal(jsarg)
 	if err != nil {
 		log4j.Warn("failed marshalling data", "data", jsarg)
 		return otto.UndefinedValue(), err
 	}
-	// Now, we call foobar(JSON.parse(<jsondata>)).
 	var call string
 	if len(jsonbytes) > 0 {
 		call = fmt.Sprintf("%v(JSON.parse(%v))", jsfunc, string(jsonbytes))
@@ -170,8 +159,6 @@ func (r *rulesetUI) ApproveExport(request *core.ExportRequest) (core.ExportRespo
 }
 
 func (r *rulesetUI) ApproveImport(request *core.ImportRequest) (core.ImportResponse, error) {
-	// This cannot be handled by rules, requires setting a password
-	// dispatch to next
 	return r.next.ApproveImport(request)
 }
 
@@ -189,8 +176,6 @@ func (r *rulesetUI) ApproveListing(request *core.ListRequest) (core.ListResponse
 }
 
 func (r *rulesetUI) ApproveNewAccount(request *core.NewAccountRequest) (core.NewAccountResponse, error) {
-	// This cannot be handled by rules, requires setting a password
-	// dispatch to next
 	return r.next.ApproveNewAccount(request)
 }
 

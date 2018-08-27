@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -55,13 +55,10 @@ var jsonEventMixedCase = []byte(`{
 	"type": "event"
   }`)
 
-// 1000000
 var transferData1 = "00000000000000000000000000000000000000000000000000000000000f4240"
 
-// "0x00Ce0d46d924CC8437c806721496599FC3FFA268", 2218516807680, "usd"
 var pledgeData1 = "00000000000000000000000000ce0d46d924cc8437c806721496599fc3ffa2680000000000000000000000000000000000000000000000000000020489e800007573640000000000000000000000000000000000000000000000000000000000"
 
-// 1000000,2218516807680,1000001
 var mixedCaseData1 = "00000000000000000000000000000000000000000000000000000000000f42400000000000000000000000000000000000000000000000000000020489e8000000000000000000000000000000000000000000000000000000000000000f4241"
 
 func TestEventId(t *testing.T) {
@@ -95,7 +92,6 @@ func TestEventId(t *testing.T) {
 	}
 }
 
-// TestEventMultiValueWithArrayUnpack verifies that array fields will be counted after parsing array.
 func TestEventMultiValueWithArrayUnpack(t *testing.T) {
 	definition := `[{"name": "test", "type": "event", "inputs": [{"indexed": false, "name":"value1", "type":"uint8[2]"},{"indexed": false, "name":"value2", "type":"uint8"}]}]`
 	type testStruct struct {
@@ -122,8 +118,6 @@ func TestEventTupleUnpack(t *testing.T) {
 	}
 
 	type EventTransferWithTag struct {
-		// this is valid because `value` is not exportable,
-		// so value is only unmarshalled into `Value1`.
 		value  *big.Int
 		Value1 *big.Int `abi:"value"`
 	}
@@ -307,7 +301,7 @@ func unpackTestEventData(dest interface{}, hexData string, jsonEvent []byte, ass
 
 /*
 Taken from
-https://github.com/ethereum/go-ethereum/pull/15568
+https://github.com/5uwifi/canchain/pull/15568
 */
 
 type testResult struct {
@@ -339,7 +333,6 @@ func (tc testCase) encoded(intType, arrayType Type) []byte {
 	return b.Bytes()
 }
 
-// TestEventUnpackIndexed verifies that indexed field will be skipped by event decoder.
 func TestEventUnpackIndexed(t *testing.T) {
 	definition := `[{"name": "test", "type": "event", "inputs": [{"indexed": true, "name":"value1", "type":"uint8"},{"indexed": false, "name":"value2", "type":"uint8"}]}]`
 	type testStruct struct {
@@ -356,7 +349,6 @@ func TestEventUnpackIndexed(t *testing.T) {
 	require.Equal(t, uint8(8), rst.Value2)
 }
 
-// TestEventIndexedWithArrayUnpack verifies that decoder will not overlow when static array is indexed input.
 func TestEventIndexedWithArrayUnpack(t *testing.T) {
 	definition := `[{"name": "test", "type": "event", "inputs": [{"indexed": true, "name":"value1", "type":"uint8[2]"},{"indexed": false, "name":"value2", "type":"string"}]}]`
 	type testStruct struct {
@@ -367,7 +359,6 @@ func TestEventIndexedWithArrayUnpack(t *testing.T) {
 	require.NoError(t, err)
 	var b bytes.Buffer
 	stringOut := "abc"
-	// number of fields that will be encoded * 32
 	b.Write(packNum(reflect.ValueOf(32)))
 	b.Write(packNum(reflect.ValueOf(len(stringOut))))
 	b.Write(common.RightPadBytes([]byte(stringOut), 32))

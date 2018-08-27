@@ -1,4 +1,3 @@
-
 package rpc
 
 import (
@@ -14,18 +13,16 @@ import (
 	"strings"
 	"time"
 
-	"github.com/5uwifi/canchain/basis/log4j"
+	mapset "github.com/deckarep/golang-set"
+	"github.com/5uwifi/canchain/lib/log4j"
 	"golang.org/x/net/websocket"
-	"gopkg.in/fatih/set.v0"
 )
 
 var websocketJSONCodec = websocket.Codec{
-	// Marshal is the stock JSON marshaller used by the websocket library too.
 	Marshal: func(v interface{}) ([]byte, byte, error) {
 		msg, err := json.Marshal(v)
 		return msg, websocket.TextFrame, err
 	},
-	// Unmarshal is a specialized unmarshaller to properly convert numbers.
 	Unmarshal: func(msg []byte, payloadType byte, v interface{}) error {
 		dec := json.NewDecoder(bytes.NewReader(msg))
 		dec.UseNumber()
@@ -34,12 +31,10 @@ var websocketJSONCodec = websocket.Codec{
 	},
 }
 
-//
 func (srv *Server) WebsocketHandler(allowedOrigins []string) http.Handler {
 	return websocket.Server{
 		Handshake: wsHandshakeValidator(allowedOrigins),
 		Handler: func(conn *websocket.Conn) {
-			// Create a custom encode/decode pair to enforce payload size and number encoding
 			conn.MaxPayloadBytes = maxRequestContentLength
 
 			encoder := func(v interface{}) error {
@@ -53,13 +48,12 @@ func (srv *Server) WebsocketHandler(allowedOrigins []string) http.Handler {
 	}
 }
 
-//
 func NewWSServer(allowedOrigins []string, srv *Server) *http.Server {
 	return &http.Server{Handler: srv.WebsocketHandler(allowedOrigins)}
 }
 
 func wsHandshakeValidator(allowedOrigins []string) func(*websocket.Config, *http.Request) error {
-	origins := set.New()
+	origins := mapset.NewSet()
 	allowAllOrigins := false
 
 	for _, origin := range allowedOrigins {
@@ -71,19 +65,18 @@ func wsHandshakeValidator(allowedOrigins []string) func(*websocket.Config, *http
 		}
 	}
 
-	// allow localhost if no allowedOrigins are specified.
-	if len(origins.List()) == 0 {
+	if len(origins.ToSlice()) == 0 {
 		origins.Add("http://localhost")
 		if hostname, err := os.Hostname(); err == nil {
 			origins.Add("http://" + strings.ToLower(hostname))
 		}
 	}
 
-	log4j.Debug(fmt.Sprintf("Allowed origin(s) for WS RPC interface %v\n", origins.List()))
+	log4j.Debug(fmt.Sprintf("Allowed origin(s) for WS RPC interface %v\n", origins.ToSlice()))
 
 	f := func(cfg *websocket.Config, req *http.Request) error {
 		origin := strings.ToLower(req.Header.Get("Origin"))
-		if allowAllOrigins || origins.Has(origin) {
+		if allowAllOrigins || origins.Contains(origin) {
 			return nil
 		}
 		log4j.Warn(fmt.Sprintf("origin '%s' not allowed on WS-RPC interface\n", origin))
@@ -93,7 +86,6 @@ func wsHandshakeValidator(allowedOrigins []string) func(*websocket.Config, *http
 	return f
 }
 
-//
 func DialWebsocket(ctx context.Context, endpoint, origin string) (*Client, error) {
 	if origin == "" {
 		var err error

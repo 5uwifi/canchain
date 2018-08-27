@@ -9,7 +9,7 @@ import (
 	"github.com/5uwifi/canchain/accounts/keystore"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 func NewTransactor(keyin io.Reader, passphrase string) (*TransactOpts, error) {

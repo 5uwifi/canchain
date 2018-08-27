@@ -1,5 +1,3 @@
-//
-
 package storage
 
 import (
@@ -11,21 +9,17 @@ import (
 	"io/ioutil"
 	"os"
 
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 type storedCredential struct {
-	// The iv
-	Iv []byte `json:"iv"`
-	// The ciphertext
+	Iv         []byte `json:"iv"`
 	CipherText []byte `json:"c"`
 }
 
 type AESEncryptedStorage struct {
-	// File to read/write credentials
 	filename string
-	// Key stored in base64
-	key []byte
+	key      []byte
 }
 
 func NewAESEncryptedStorage(filename string, key []byte) *AESEncryptedStorage {
@@ -84,7 +78,6 @@ func (s *AESEncryptedStorage) readEncryptedStorage() (map[string]storedCredentia
 
 	if err != nil {
 		if os.IsNotExist(err) {
-			// Doesn't exist yet
 			return creds, nil
 		}
 		log4j.Warn("Failed to read encrypted storage", "err", err, "file", s.filename)

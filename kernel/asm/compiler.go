@@ -1,4 +1,3 @@
-
 package asm
 
 import (
@@ -29,7 +28,6 @@ func NewCompiler(debug bool) *Compiler {
 	}
 }
 
-//
 func (c *Compiler) Feed(ch <-chan token) {
 	for i := range ch {
 		switch i.typ {
@@ -57,18 +55,14 @@ func (c *Compiler) Feed(ch <-chan token) {
 	}
 }
 
-//
 func (c *Compiler) Compile() (string, []error) {
 	var errors []error
-	// continue looping over the tokens until
-	// the stack has been exhausted.
 	for c.pos < len(c.tokens) {
 		if err := c.compileLine(); err != nil {
 			errors = append(errors, err)
 		}
 	}
 
-	// turn the binary to hex
 	var bin string
 	for _, v := range c.binary {
 		switch v := v.(type) {
@@ -87,7 +81,6 @@ func (c *Compiler) next() token {
 	return token
 }
 
-// "push 1", "jump @label".
 func (c *Compiler) compileLine() error {
 	n := c.next()
 	if n.typ != lineStart {
@@ -127,16 +120,12 @@ func (c *Compiler) compileNumber(element token) (int, error) {
 }
 
 func (c *Compiler) compileElement(element token) error {
-	// check for a jump. jumps must be read and compiled
-	// from right to left.
 	if isJump(element.text) {
 		rvalue := c.next()
 		switch rvalue.typ {
 		case number:
-			// TODO figure out how to return the error properly
 			c.compileNumber(rvalue)
 		case stringValue:
-			// strings are quoted, remove them.
 			c.pushBin(rvalue.text[1 : len(rvalue.text)-2])
 		case label:
 			c.pushBin(vm.PUSH4)
@@ -146,11 +135,9 @@ func (c *Compiler) compileElement(element token) error {
 		default:
 			return compileErr(rvalue, rvalue.text, "number, string or label")
 		}
-		// push the operation
 		c.pushBin(toBinary(element.text))
 		return nil
 	} else if isPush(element.text) {
-		// handle pushes. pushes are read from left to right.
 		var value []byte
 
 		rvalue := c.next()

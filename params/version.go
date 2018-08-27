@@ -5,22 +5,37 @@ import (
 )
 
 const (
-	VersionMajor = 0          // Major version component of the current release
-	VersionMinor = 1          // Minor version component of the current release
-	VersionPatch = 0         // Patch version component of the current release
-	VersionMeta  = "unstable" // Version metadata to append to the version string
+	VersionMajor = 1
+	VersionMinor = 8
+	VersionPatch = 14
+	VersionMeta  = "unstable"
 )
 
 var Version = func() string {
-	v := fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionPatch)
+	return fmt.Sprintf("%d.%d.%d", VersionMajor, VersionMinor, VersionPatch)
+}()
+
+var VersionWithMeta = func() string {
+	v := Version
 	if VersionMeta != "" {
 		v += "-" + VersionMeta
 	}
 	return v
 }()
 
-func VersionWithCommit(gitCommit string) string {
+func ArchiveVersion(gitCommit string) string {
 	vsn := Version
+	if VersionMeta != "stable" {
+		vsn += "-" + VersionMeta
+	}
+	if len(gitCommit) >= 8 {
+		vsn += "-" + gitCommit[:8]
+	}
+	return vsn
+}
+
+func VersionWithCommit(gitCommit string) string {
+	vsn := VersionWithMeta
 	if len(gitCommit) >= 8 {
 		vsn += "-" + gitCommit[:8]
 	}

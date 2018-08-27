@@ -10,7 +10,7 @@ import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/internal/canapi"
+	"github.com/5uwifi/canchain/privacy/canapi"
 	"github.com/5uwifi/canchain/signer/core"
 	"github.com/5uwifi/canchain/signer/storage"
 )
@@ -112,7 +112,7 @@ func TestListRequest(t *testing.T) {
 	accs := make([]core.Account, 5)
 
 	for i := range accs {
-		addr := fmt.Sprintf("000000000000000000000000000000000000000000000000000%x", i)
+		addr := fmt.Sprintf("000000000000000000000000000000000000000%x", i)
 		acc := core.Account{
 			Address: common.BytesToAddress(common.Hex2Bytes(addr)),
 			URL:     accounts.URL{Scheme: "test", Path: fmt.Sprintf("acc-%d", i)},
@@ -144,8 +144,8 @@ func TestSignTxRequest(t *testing.T) {
 		console.log("transaction.to", r.transaction.to);
 		console.log("transaction.value", r.transaction.value);
 		console.log("transaction.nonce", r.transaction.nonce);
-		if(r.transaction.from.toLowerCase()=="0x0000000000000000000000000000000000000000000000001337"){ return "Approve"}
-		if(r.transaction.from.toLowerCase()=="0x000000000000000000000000000000000000000000000000dead"){ return "Reject"}
+		if(r.transaction.from.toLowerCase()=="0x0000000000000000000000000000000000001337"){ return "Approve"}
+		if(r.transaction.from.toLowerCase()=="0x000000000000000000000000000000000000dead"){ return "Reject"}
 	}`
 
 	r, err := initRuleEngine(js)
@@ -153,12 +153,12 @@ func TestSignTxRequest(t *testing.T) {
 		t.Errorf("Couldn't create evaluator %v", err)
 		return
 	}
-	to, err := mixAddr("000000000000000000000000000000000000000000000000dead")
+	to, err := mixAddr("000000000000000000000000000000000000dead")
 	if err != nil {
 		t.Error(err)
 		return
 	}
-	from, err := mixAddr("0000000000000000000000000000000000000000000000001337")
+	from, err := mixAddr("0000000000000000000000000000000000001337")
 
 	if err != nil {
 		t.Error(err)
@@ -228,7 +228,6 @@ func (d *dummyUI) OnApprovedTx(tx canapi.SignTransactionResult) {
 func (d *dummyUI) OnSignerStartup(info core.StartupInfo) {
 }
 
-//TestForwarding tests that the rule-engine correctly dispatches requests to the next caller
 func TestForwarding(t *testing.T) {
 
 	js := ""
@@ -251,7 +250,6 @@ func TestForwarding(t *testing.T) {
 	r.ShowError("test")
 	r.ShowInfo("test")
 
-	//This one is not forwarded
 	r.OnApprovedTx(canapi.SignTransactionResult{})
 
 	expCalls := 8
@@ -293,20 +291,20 @@ func TestStorage(t *testing.T) {
 		storage.Put("mykey", "myvalue")
 		a = storage.Get("mykey")
 
-		storage.Put("mykey", ["a", "list"])  	// Should result in "a,list"
+		storage.Put("mykey", ["a", "list"])
 		a += storage.Get("mykey")
 
 
-		storage.Put("mykey", {"an": "object"}) 	// Should result in "[object Object]"
+		storage.Put("mykey", {"an": "object"})
 		a += storage.Get("mykey")
 
 
-		storage.Put("mykey", JSON.stringify({"an": "object"})) // Should result in '{"an":"object"}'
+		storage.Put("mykey", JSON.stringify({"an": "object"}))
 		a += storage.Get("mykey")
 
-		a += storage.Get("missingkey")		//Missing keys should result in empty string
-		storage.Put("","missing key==noop") // Can't store with 0-length key
-		a += storage.Get("")				// Should result in ''
+		a += storage.Get("missingkey")
+		storage.Put("","missing key==noop")
+		a += storage.Get("")
 
 		var b = new BigNumber(2)
 		var c = new BigNumber(16)//"0xf0",16)
@@ -346,15 +344,12 @@ const ExampleTxWindow = `
 		return new BigNumber(str)
 	}
 
-	// Time window: 1 week
 	var window = 1000* 3600*24*7;
 
-	// Limit : 1 ether
 	var limit = new BigNumber("1e18");
 
 	function isLimitOk(transaction){
 		var value = big(transaction.value)
-		// Start of our window function
 		var windowstart = new Date().getTime() - window;
 
 		var txs = [];
@@ -363,18 +358,15 @@ const ExampleTxWindow = `
 		if(stored != ""){
 			txs = JSON.parse(stored)
 		}
-		// First, remove all that have passed out of the time-window
 		var newtxs = txs.filter(function(tx){return tx.tstamp > windowstart});
 		console.log(txs, newtxs.length);
 
-		// Secondly, aggregate the current sum
 		sum = new BigNumber(0)
 
 		sum = newtxs.reduce(function(agg, tx){ return big(tx.value).plus(agg)}, sum);
 		console.log("ApproveTx > Sum so far", sum);
 		console.log("ApproveTx > Requested", value.toNumber());
 
-		// Would we exceed weekly limit ?
 		return sum.plus(value).lt(limit)
 
 	}
@@ -402,12 +394,10 @@ const ExampleTxWindow = `
  	function OnApprovedTx(resp){
 		var value = big(resp.tx.value)
 		var txs = []
-		// Load stored transactions
 		var stored = storage.Get('txs');
 		if(stored != ""){
 			txs = JSON.parse(stored)
 		}
-		// Add this to the storage
 		txs.push({tstamp: new Date().getTime(), value: value});
 		storage.Put("txs", JSON.stringify(txs));
 	}
@@ -416,8 +406,8 @@ const ExampleTxWindow = `
 
 func dummyTx(value hexutil.Big) *core.SignTxRequest {
 
-	to, _ := mixAddr("000000000000000000000000000000000000000000000000dead")
-	from, _ := mixAddr("000000000000000000000000000000000000000000000000dead")
+	to, _ := mixAddr("000000000000000000000000000000000000dead")
+	from, _ := mixAddr("000000000000000000000000000000000000dead")
 	n := hexutil.Uint64(3)
 	gas := hexutil.Uint64(21000)
 	gasPrice := hexutil.Big(*big.NewInt(2000000))
@@ -444,7 +434,7 @@ func dummyTxWithV(value uint64) *core.SignTxRequest {
 	return dummyTx(h)
 }
 func dummySigned(value *big.Int) *types.Transaction {
-	to := common.HexToAddress("000000000000000000000000000000000000000000000000dead")
+	to := common.HexToAddress("000000000000000000000000000000000000dead")
 	gas := uint64(21000)
 	gasPrice := big.NewInt(2000000)
 	data := make([]byte, 0)
@@ -459,10 +449,8 @@ func TestLimitWindow(t *testing.T) {
 		return
 	}
 
-	// 0.3 ether: 429D069189E0000 wei
 	v := big.NewInt(0).SetBytes(common.Hex2Bytes("0429D069189E0000"))
 	h := hexutil.Big(*v)
-	// The first three should succeed
 	for i := 0; i < 3; i++ {
 		unsigned := dummyTx(h)
 		resp, err := r.ApproveTx(unsigned)
@@ -472,7 +460,6 @@ func TestLimitWindow(t *testing.T) {
 		if !resp.Approved {
 			t.Errorf("Expected check to resolve to 'Approve'")
 		}
-		// Create a dummy signed transaction
 
 		response := canapi.SignTransactionResult{
 			Tx:  dummySigned(v),
@@ -480,7 +467,6 @@ func TestLimitWindow(t *testing.T) {
 		}
 		r.OnApprovedTx(response)
 	}
-	// Fourth should fail
 	resp, err := r.ApproveTx(dummyTx(h))
 	if resp.Approved {
 		t.Errorf("Expected check to resolve to 'Reject'")
@@ -488,7 +474,6 @@ func TestLimitWindow(t *testing.T) {
 
 }
 
-// dontCallMe is used as a next-handler that does not want to be called - it invokes test failure
 type dontCallMe struct {
 	t *testing.T
 }
@@ -538,9 +523,6 @@ func (d *dontCallMe) OnApprovedTx(tx canapi.SignTransactionResult) {
 	d.t.Fatalf("Did not expect next-handler to be called")
 }
 
-//TestContextIsCleared tests that the rule-engine does not retain variables over several requests.
-// if it does, that would be bad since developers may rely on that to store data,
-// instead of using the disk-based data storage
 func TestContextIsCleared(t *testing.T) {
 
 	js := `
@@ -579,14 +561,13 @@ func TestSignData(t *testing.T) {
     return "Approve"
 }
 function ApproveSignData(r){
-    if( r.address.toLowerCase() == "0x000000000000694267f14675d7e1b9494fd8d72fefe1755710fa")
+    if( r.address.toLowerCase() == "0x694267f14675d7e1b9494fd8d72fefe1755710fa")
     {
         if(r.message.indexOf("bazonk") >= 0){
             return "Approve"
         }
         return "Reject"
     }
-    // Otherwise goes to manual processing
 }`
 	r, err := initRuleEngine(js)
 	if err != nil {
@@ -596,7 +577,7 @@ function ApproveSignData(r){
 	message := []byte("baz bazonk foo")
 	hash, msg := core.SignHash(message)
 	raw := hexutil.Bytes(message)
-	addr, _ := mixAddr("0x000000000000694267f14675d7e1b9494fd8d72fefe1755710fa")
+	addr, _ := mixAddr("0x694267f14675d7e1b9494fd8d72fefe1755710fa")
 
 	fmt.Printf("address %v %v\n", addr.String(), addr.Original())
 	resp, err := r.ApproveSignData(&core.SignDataRequest{

@@ -1,4 +1,3 @@
-
 package stats
 
 import (
@@ -14,34 +13,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/5uwifi/canchain/can"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/mclock"
-	"github.com/5uwifi/canchain/consensus"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/ledger"
-	"github.com/5uwifi/canchain/basis/event"
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/p2p"
+	"github.com/5uwifi/canchain/lcs"
+	"github.com/5uwifi/canchain/lib/consensus"
+	"github.com/5uwifi/canchain/lib/event"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/p2p"
 	"github.com/5uwifi/canchain/rpc"
 	"golang.org/x/net/websocket"
 )
 
 const (
-	// historyUpdateRange is the number of blocks a node should report upon login or
-	// history request.
 	historyUpdateRange = 50
 
-	// txChanSize is the size of channel listening to NewTxsEvent.
-	// The number is referenced from the size of tx pool.
-	txChanSize = 4096
-	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
+	txChanSize        = 4096
 	chainHeadChanSize = 10
 )
 
 type txPool interface {
-	// SubscribeNewTxsEvent should return an event subscription of
-	// NewTxsEvent and send events to the given channel.
 	SubscribeNewTxsEvent(chan<- kernel.NewTxsEvent) event.Subscription
 }
 
@@ -50,32 +43,34 @@ type blockChain interface {
 }
 
 type Service struct {
-	server *p2p.Server        // Peer-to-peer server to retrieve networking infos
-	eth    *ledger.Ledger     // Full Ethereum service if monitoring a full node
-	engine consensus.Engine   // Consensus engine to retrieve variadic block fields
+	server *p2p.Server
+	eth    *can.CANChain
+	les    *lcs.LightCANChain
+	engine consensus.Engine
 
-	node string // Name of the node to display on the monitoring page
-	pass string // Password to authorize access to the monitoring page
-	host string // Remote address of the monitoring service
+	node string
+	pass string
+	host string
 
-	pongCh chan struct{} // Pong notifications are fed into this channel
-	histCh chan []uint64 // History request block numbers are fed into this channel
+	pongCh chan struct{}
+	histCh chan []uint64
 }
 
-func New(url string, ethServ *ledger.Ledger) (*Service, error) {
-	// Parse the netstats connection url
+func New(url string, ethServ *can.CANChain, lesServ *lcs.LightCANChain) (*Service, error) {
 	re := regexp.MustCompile("([^:@]*)(:([^@]*))?@(.+)")
 	parts := re.FindStringSubmatch(url)
 	if len(parts) != 5 {
 		return nil, fmt.Errorf("invalid netstats url: \"%s\", should be nodename:secret@host:port", url)
 	}
-	// Assemble and return the stats service
 	var engine consensus.Engine
 	if ethServ != nil {
 		engine = ethServ.Engine()
+	} else {
+		engine = lesServ.Engine()
 	}
 	return &Service{
 		eth:    ethServ,
+		les:    lesServ,
 		engine: engine,
 		node:   parts[1],
 		pass:   parts[3],
@@ -103,12 +98,14 @@ func (s *Service) Stop() error {
 }
 
 func (s *Service) loop() {
-	// Subscribe to chain events to execute updates on
 	var blockchain blockChain
 	var txpool txPool
 	if s.eth != nil {
 		blockchain = s.eth.BlockChain()
 		txpool = s.eth.TxPool()
+	} else {
+		blockchain = s.les.BlockChain()
+		txpool = s.les.TxPool()
 	}
 
 	chainHeadCh := make(chan kernel.ChainHeadEvent, chainHeadChanSize)
@@ -119,7 +116,6 @@ func (s *Service) loop() {
 	txSub := txpool.SubscribeNewTxsEvent(txEventCh)
 	defer txSub.Unsubscribe()
 
-	// Start a goroutine that exhausts the subsciptions to avoid events piling up
 	var (
 		quitCh = make(chan struct{})
 		headCh = make(chan *types.Block, 1)
@@ -131,14 +127,12 @@ func (s *Service) loop() {
 	HandleLoop:
 		for {
 			select {
-			// Notify of chain head events, but drop if too frequent
 			case head := <-chainHeadCh:
 				select {
 				case headCh <- head.Block:
 				default:
 				}
 
-			// Notify of new transaction events, but drop if too frequent
 			case <-txEventCh:
 				if time.Duration(mclock.Now()-lastTx) < time.Second {
 					continue
@@ -150,7 +144,6 @@ func (s *Service) loop() {
 				default:
 				}
 
-			// node stopped
 			case <-txSub.Err():
 				break HandleLoop
 			case <-headSub.Err():
@@ -159,16 +152,13 @@ func (s *Service) loop() {
 		}
 		close(quitCh)
 	}()
-	// Loop reporting until termination
 	for {
-		// Resolve the URL, defaulting to TLS, but falling back to none too
 		path := fmt.Sprintf("%s/api", s.host)
 		urls := []string{path}
 
-		if !strings.Contains(path, "://") { // url.Parse and url.IsAbs is unsuitable (https://github.com/golang/go/issues/19779)
+		if !strings.Contains(path, "://") {
 			urls = []string{"wss://" + path, "ws://" + path}
 		}
-		// Establish a websocket connection to the server on any supported URL
 		var (
 			conf *websocket.Config
 			conn *websocket.Conn
@@ -188,7 +178,6 @@ func (s *Service) loop() {
 			time.Sleep(10 * time.Second)
 			continue
 		}
-		// Authenticate the client with the server
 		if err = s.login(conn); err != nil {
 			log4j.Warn("Stats login failed", "err", err)
 			conn.Close()
@@ -197,13 +186,11 @@ func (s *Service) loop() {
 		}
 		go s.readLoop(conn)
 
-		// Send the initial stats so our node looks decent from the get go
 		if err = s.report(conn); err != nil {
 			log4j.Warn("Initial stats report failed", "err", err)
 			conn.Close()
 			continue
 		}
-		// Keep sending status updates until the connection breaks
 		fullReport := time.NewTicker(15 * time.Second)
 
 		for err == nil {
@@ -233,17 +220,14 @@ func (s *Service) loop() {
 				}
 			}
 		}
-		// Make sure the connection is closed
 		conn.Close()
 	}
 }
 
 func (s *Service) readLoop(conn *websocket.Conn) {
-	// If the read loop exists, close the connection
 	defer conn.Close()
 
 	for {
-		// Retrieve the next generic network packet and bail out on error
 		var msg map[string][]interface{}
 		if err := websocket.JSON.Receive(conn, &msg); err != nil {
 			log4j.Warn("Failed to decode stats server message", "err", err)
@@ -259,33 +243,27 @@ func (s *Service) readLoop(conn *websocket.Conn) {
 			log4j.Warn("Invalid stats server message type", "type", msg["emit"][0])
 			return
 		}
-		// If the message is a ping reply, deliver (someone must be listening!)
 		if len(msg["emit"]) == 2 && command == "node-pong" {
 			select {
 			case s.pongCh <- struct{}{}:
-				// Pong delivered, continue listening
 				continue
 			default:
-				// Ping routine dead, abort
 				log4j.Warn("Stats server pinger seems to have died")
 				return
 			}
 		}
-		// If the message is a history request, forward to the event processor
 		if len(msg["emit"]) == 2 && command == "history" {
-			// Make sure the request is valid and doesn't crash us
 			request, ok := msg["emit"][1].(map[string]interface{})
 			if !ok {
 				log4j.Warn("Invalid stats history request", "msg", msg["emit"][1])
 				s.histCh <- nil
-				continue // Ethstats sometime sends invalid history requests, ignore those
+				continue
 			}
 			list, ok := request["list"].([]interface{})
 			if !ok {
 				log4j.Warn("Invalid stats history block list", "list", request["list"])
 				return
 			}
-			// Convert the block number list to an integer list
 			numbers := make([]uint64, len(list))
 			for i, num := range list {
 				n, ok := num.(float64)
@@ -301,7 +279,6 @@ func (s *Service) readLoop(conn *websocket.Conn) {
 			default:
 			}
 		}
-		// Report anything else and continue
 		log4j.Info("Unknown stats message", "msg", msg)
 	}
 }
@@ -326,13 +303,15 @@ type authMsg struct {
 }
 
 func (s *Service) login(conn *websocket.Conn) error {
-	// Construct and send the login authentication
 	infos := s.server.NodeInfo()
 
 	var network, protocol string
 	if info := infos.Protocols["eth"]; info != nil {
-		network = fmt.Sprintf("%d", info.(*ledger.NodeInfo).Network)
-		protocol = fmt.Sprintf("eth/%d", ledger.ProtocolVersions[0])
+		network = fmt.Sprintf("%d", info.(*can.NodeInfo).Network)
+		protocol = fmt.Sprintf("eth/%d", can.ProtocolVersions[0])
+	} else {
+		network = fmt.Sprintf("%d", infos.Protocols["les"].(*lcs.NodeInfo).Network)
+		protocol = fmt.Sprintf("les/%d", lcs.ClientProtocolVersions[0])
 	}
 	auth := &authMsg{
 		ID: s.node,
@@ -356,7 +335,6 @@ func (s *Service) login(conn *websocket.Conn) error {
 	if err := websocket.JSON.Send(conn, login); err != nil {
 		return err
 	}
-	// Retrieve the remote ack or connection termination
 	var ack map[string][]string
 	if err := websocket.JSON.Receive(conn, &ack); err != nil || len(ack["emit"]) != 1 || ack["emit"][0] != "ready" {
 		return errors.New("unauthorized")
@@ -381,7 +359,6 @@ func (s *Service) report(conn *websocket.Conn) error {
 }
 
 func (s *Service) reportLatency(conn *websocket.Conn) error {
-	// Send the current time to the ethstats server
 	start := time.Now()
 
 	ping := map[string][]interface{}{
@@ -393,17 +370,13 @@ func (s *Service) reportLatency(conn *websocket.Conn) error {
 	if err := websocket.JSON.Send(conn, ping); err != nil {
 		return err
 	}
-	// Wait for the pong request to arrive back
 	select {
 	case <-s.pongCh:
-		// Pong delivered, report the latency
 	case <-time.After(5 * time.Second):
-		// Ping timeout, abort
 		return errors.New("ping timed out")
 	}
 	latency := strconv.Itoa(int((time.Since(start) / time.Duration(2)).Nanoseconds() / 1000000))
 
-	// Send back the measured latency
 	log4j.Trace("Sending measured latency to ethstats", "latency", latency)
 
 	stats := map[string][]interface{}{
@@ -445,10 +418,8 @@ func (s uncleStats) MarshalJSON() ([]byte, error) {
 }
 
 func (s *Service) reportBlock(conn *websocket.Conn, block *types.Block) error {
-	// Gather the block details from the header or block chain
 	details := s.assembleBlockStats(block)
 
-	// Assemble the block report and send it to the server
 	log4j.Trace("Sending new block to ethstats", "number", details.Number, "hash", details.Hash)
 
 	stats := map[string]interface{}{
@@ -462,7 +433,6 @@ func (s *Service) reportBlock(conn *websocket.Conn, block *types.Block) error {
 }
 
 func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
-	// Gather the block infos from the local blockchain
 	var (
 		header *types.Header
 		td     *big.Int
@@ -470,7 +440,6 @@ func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
 		uncles []*types.Header
 	)
 	if s.eth != nil {
-		// Full nodes have all needed information available
 		if block == nil {
 			block = s.eth.BlockChain().CurrentBlock()
 		}
@@ -482,8 +451,15 @@ func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
 			txs[i].Hash = tx.Hash()
 		}
 		uncles = block.Uncles()
+	} else {
+		if block != nil {
+			header = block.Header()
+		} else {
+			header = s.les.BlockChain().CurrentHeader()
+		}
+		td = s.les.BlockChain().GetTd(header.Hash(), header.Number.Uint64())
+		txs = []txStats{}
 	}
-	// Assemble and return the block stats
 	author, _ := s.engine.Author(header)
 
 	return &blockStats{
@@ -504,16 +480,15 @@ func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
 }
 
 func (s *Service) reportHistory(conn *websocket.Conn, list []uint64) error {
-	// Figure out the indexes that need reporting
 	indexes := make([]uint64, 0, historyUpdateRange)
 	if len(list) > 0 {
-		// Specific indexes requested, send them back in particular
 		indexes = append(indexes, list...)
 	} else {
-		// No indexes requested, send back the top ones
 		var head int64
 		if s.eth != nil {
 			head = s.eth.BlockChain().CurrentHeader().Number.Int64()
+		} else {
+			head = s.les.BlockChain().CurrentHeader().Number.Int64()
 		}
 		start := head - historyUpdateRange + 1
 		if start < 0 {
@@ -523,24 +498,23 @@ func (s *Service) reportHistory(conn *websocket.Conn, list []uint64) error {
 			indexes = append(indexes, i)
 		}
 	}
-	// Gather the batch of blocks to report
 	history := make([]*blockStats, len(indexes))
 	for i, number := range indexes {
-		// Retrieve the next block if it's known to us
 		var block *types.Block
 		if s.eth != nil {
 			block = s.eth.BlockChain().GetBlockByNumber(number)
+		} else {
+			if header := s.les.BlockChain().GetHeaderByNumber(number); header != nil {
+				block = types.NewBlockWithHeader(header)
+			}
 		}
-		// If we do have the block, add to the history and continue
 		if block != nil {
 			history[len(history)-1-i] = s.assembleBlockStats(block)
 			continue
 		}
-		// Ran out of blocks, cut the report short and send
 		history = history[len(history)-i:]
 		break
 	}
-	// Assemble the history report and send it to the server
 	if len(history) > 0 {
 		log4j.Trace("Sending historical blocks to ethstats", "first", history[0].Number, "last", history[len(history)-1].Number)
 	} else {
@@ -561,12 +535,12 @@ type pendStats struct {
 }
 
 func (s *Service) reportPending(conn *websocket.Conn) error {
-	// Retrieve the pending count from the local blockchain
 	var pending int
 	if s.eth != nil {
 		pending, _ = s.eth.TxPool().Stats()
+	} else {
+		pending = s.les.TxPool().Stats()
 	}
-	// Assemble the transaction stats and send it to the server
 	log4j.Trace("Sending pending transactions to ethstats", "count", pending)
 
 	stats := map[string]interface{}{
@@ -592,7 +566,6 @@ type nodeStats struct {
 }
 
 func (s *Service) reportStats(conn *websocket.Conn) error {
-	// Gather the syncing and mining infos from the local miner instance
 	var (
 		mining   bool
 		hashrate int
@@ -608,8 +581,10 @@ func (s *Service) reportStats(conn *websocket.Conn) error {
 
 		price, _ := s.eth.APIBackend.SuggestPrice(context.Background())
 		gasprice = int(price.Uint64())
+	} else {
+		sync := s.les.Downloader().Progress()
+		syncing = s.les.BlockChain().CurrentHeader().Number.Uint64() >= sync.HighestBlock
 	}
-	// Assemble the node stats and send it to the server
 	log4j.Trace("Sending node details to ethstats")
 
 	stats := map[string]interface{}{

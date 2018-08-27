@@ -12,11 +12,11 @@ import (
 	"testing"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 func tmpKeyStoreIface(t *testing.T, encrypted bool) (dir string, ks keyStore) {
-	d, err := ioutil.TempDir("", "can-keystore-test")
+	d, err := ioutil.TempDir("", "gcan-keystore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +32,7 @@ func TestKeyStorePlain(t *testing.T) {
 	dir, ks := tmpKeyStoreIface(t, false)
 	defer os.RemoveAll(dir)
 
-	pass := "" // not used but required by API
+	pass := ""
 	k1, account, err := storeNewKey(ks, rand.Reader, pass)
 	if err != nil {
 		t.Fatal(err)
@@ -88,16 +88,13 @@ func TestImportPreSaleKey(t *testing.T) {
 	dir, ks := tmpKeyStoreIface(t, true)
 	defer os.RemoveAll(dir)
 
-	// file content of a presale key file generated with:
-	// python pyethsaletool.py genwallet
-	// with password "foo"
-	fileContent := "{\"encseed\": \"26d87f5f2bf9835f9a47eefae571bc09f9107bb13d54ff12a4ec095d01f83897494cf34f7bed2ed34126ecba9db7b62de56c9d7cd136520a0427bfb11b8954ba7ac39b90d4650d3448e31185affcd74226a68f1e94b1108e6e0a4a91cdd83eba\", \"ethaddr\": \"a03c5b60265dd4584b5f6229b7be90727b0fc8c6b91bb427821f\", \"email\": \"gustav.simonsson@gmail.com\", \"btcaddr\": \"1EVknXyFC68kKNLkh6YnKzW41svSRoaAcx\"}"
+	fileContent := "{\"encseed\": \"26d87f5f2bf9835f9a47eefae571bc09f9107bb13d54ff12a4ec095d01f83897494cf34f7bed2ed34126ecba9db7b62de56c9d7cd136520a0427bfb11b8954ba7ac39b90d4650d3448e31185affcd74226a68f1e94b1108e6e0a4a91cdd83eba\", \"ethaddr\": \"d4584b5f6229b7be90727b0fc8c6b91bb427821f\", \"email\": \"gustav.simonsson@gmail.com\", \"btcaddr\": \"1EVknXyFC68kKNLkh6YnKzW41svSRoaAcx\"}"
 	pass := "foo"
 	account, _, err := importPreSaleKey(ks, []byte(fileContent), pass)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if account.Address != common.HexToAddress("a03c5b60265dd4584b5f6229b7be90727b0fc8c6b91bb427821f") {
+	if account.Address != common.HexToAddress("d4584b5f6229b7be90727b0fc8c6b91bb427821f") {
 		t.Errorf("imported account has wrong address %x", account.Address)
 	}
 	if !strings.HasPrefix(account.URL.Path, dir) {
@@ -105,8 +102,6 @@ func TestImportPreSaleKey(t *testing.T) {
 	}
 }
 
-// Test and utils for the key store tests in the Ethereum JSON tests;
-// testdataKeyStoreTests/basic_tests.json
 type KeyStoreTestV3 struct {
 	Json     encryptedKeyJSONV3
 	Password string
@@ -176,7 +171,7 @@ func TestV1_1(t *testing.T) {
 func TestV1_2(t *testing.T) {
 	t.Parallel()
 	ks := &keyStorePassphrase{"testdata/v1", LightScryptN, LightScryptP}
-	addr := common.HexToAddress("1f21e73cee43cb61d5a9c4896fb9658090b597ef0e7be6f7b67e")
+	addr := common.HexToAddress("cb61d5a9c4896fb9658090b597ef0e7be6f7b67e")
 	file := "testdata/v1/cb61d5a9c4896fb9658090b597ef0e7be6f7b67e/cb61d5a9c4896fb9658090b597ef0e7be6f7b67e"
 	k, err := ks.GetKey(addr, file, "g")
 	if err != nil {

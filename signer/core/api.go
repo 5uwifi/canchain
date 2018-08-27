@@ -11,54 +11,35 @@ import (
 
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/accounts/keystore"
+	"github.com/5uwifi/canchain/accounts/usbwallet"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/rlp"
+	"github.com/5uwifi/canchain/privacy/canapi"
 )
 
 type ExternalAPI interface {
-	// List available accounts
 	List(ctx context.Context) (Accounts, error)
-	// New request to create a new account
 	New(ctx context.Context) (accounts.Account, error)
-	// SignTransaction request to sign the specified transaction
 	SignTransaction(ctx context.Context, args SendTxArgs, methodSelector *string) (*canapi.SignTransactionResult, error)
-	// Sign - request to sign the given data (plus prefix)
 	Sign(ctx context.Context, addr common.MixedcaseAddress, data hexutil.Bytes) (hexutil.Bytes, error)
-	// EcRecover - request to perform ecrecover
 	EcRecover(ctx context.Context, data, sig hexutil.Bytes) (common.Address, error)
-	// Export - request to export an account
 	Export(ctx context.Context, addr common.Address) (json.RawMessage, error)
-	// Import - request to import an account
 	Import(ctx context.Context, keyJSON json.RawMessage) (Account, error)
 }
 
 type SignerUI interface {
-	// ApproveTx prompt the user for confirmation to request to sign Transaction
 	ApproveTx(request *SignTxRequest) (SignTxResponse, error)
-	// ApproveSignData prompt the user for confirmation to request to sign data
 	ApproveSignData(request *SignDataRequest) (SignDataResponse, error)
-	// ApproveExport prompt the user for confirmation to export encrypted Account json
 	ApproveExport(request *ExportRequest) (ExportResponse, error)
-	// ApproveImport prompt the user for confirmation to import Account json
 	ApproveImport(request *ImportRequest) (ImportResponse, error)
-	// ApproveListing prompt the user for confirmation to list accounts
-	// the list of accounts to list can be modified by the UI
 	ApproveListing(request *ListRequest) (ListResponse, error)
-	// ApproveNewAccount prompt the user for confirmation to create new Account, and reveal to caller
 	ApproveNewAccount(request *NewAccountRequest) (NewAccountResponse, error)
-	// ShowError displays error message to user
 	ShowError(message string)
-	// ShowInfo displays info message to user
 	ShowInfo(message string)
-	// OnApprovedTx notifies the UI about a transaction having been successfully signed.
-	// This method can be used by a UI to keep track of e.g. how much has been sent to a particular recipient.
 	OnApprovedTx(tx canapi.SignTransactionResult)
-	// OnSignerStartup is invoked when the signer boots, and tells the UI info about external API location and version
-	// information
 	OnSignerStartup(info StartupInfo)
 }
 
@@ -76,7 +57,7 @@ type Metadata struct {
 }
 
 func MetadataFromContext(ctx context.Context) Metadata {
-	m := Metadata{"NA", "NA", "NA"} // batman
+	m := Metadata{"NA", "NA", "NA"}
 
 	if v := ctx.Value("remote"); v != nil {
 		m.Remote = v.(string)
@@ -99,29 +80,23 @@ func (m Metadata) String() string {
 }
 
 type (
-	// SignTxRequest contains info about a Transaction to sign
 	SignTxRequest struct {
 		Transaction SendTxArgs       `json:"transaction"`
 		Callinfo    []ValidationInfo `json:"call_info"`
 		Meta        Metadata         `json:"meta"`
 	}
-	// SignTxResponse result from SignTxRequest
 	SignTxResponse struct {
-		//The UI may make changes to the TX
 		Transaction SendTxArgs `json:"transaction"`
 		Approved    bool       `json:"approved"`
 		Password    string     `json:"password"`
 	}
-	// ExportRequest info about query to export accounts
 	ExportRequest struct {
 		Address common.Address `json:"address"`
 		Meta    Metadata       `json:"meta"`
 	}
-	// ExportResponse response to export-request
 	ExportResponse struct {
 		Approved bool `json:"approved"`
 	}
-	// ImportRequest info about request to import an Account
 	ImportRequest struct {
 		Meta Metadata `json:"meta"`
 	}
@@ -173,9 +148,22 @@ func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abi
 	if lightKDF {
 		n, p = keystore.LightScryptN, keystore.LightScryptP
 	}
-	// support password based accounts
 	if len(ksLocation) > 0 {
 		backends = append(backends, keystore.NewKeyStore(ksLocation, n, p))
+	}
+	if !noUSB {
+		if ledgerhub, err := usbwallet.NewLedgerHub(); err != nil {
+			log4j.Warn(fmt.Sprintf("Failed to start Ledger hub, disabling: %v", err))
+		} else {
+			backends = append(backends, ledgerhub)
+			log4j.Debug("Ledger support enabled")
+		}
+		if trezorhub, err := usbwallet.NewTrezorHub(); err != nil {
+			log4j.Warn(fmt.Sprintf("Failed to start Trezor hub, disabling: %v", err))
+		} else {
+			backends = append(backends, trezorhub)
+			log4j.Debug("Trezor support enabled")
+		}
 	}
 	return &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb)}
 }
@@ -273,7 +261,6 @@ func (api *SignerAPI) SignTransaction(ctx context.Context, args SendTxArgs, meth
 		Meta:        MetadataFromContext(ctx),
 		Callinfo:    msgs.Messages,
 	}
-	// Process approval
 	result, err = api.UI.ApproveTx(&req)
 	if err != nil {
 		return nil, err
@@ -281,7 +268,6 @@ func (api *SignerAPI) SignTransaction(ctx context.Context, args SendTxArgs, meth
 	if !result.Approved {
 		return nil, ErrRequestDenied
 	}
-	// Log changes made by the UI to the signing-request
 	logDiff(&req, &result)
 	var (
 		acc    accounts.Account
@@ -292,10 +278,8 @@ func (api *SignerAPI) SignTransaction(ctx context.Context, args SendTxArgs, meth
 	if err != nil {
 		return nil, err
 	}
-	// Convert fields into a real transaction
 	var unsignedTx = result.Transaction.toTransaction()
 
-	// The one to sign is the one that was returned from the UI
 	signedTx, err := wallet.SignTxWithPassphrase(acc, result.Password, unsignedTx, api.chainID)
 	if err != nil {
 		api.UI.ShowError(err.Error())
@@ -305,20 +289,13 @@ func (api *SignerAPI) SignTransaction(ctx context.Context, args SendTxArgs, meth
 	rlpdata, err := rlp.EncodeToBytes(signedTx)
 	response := canapi.SignTransactionResult{Raw: rlpdata, Tx: signedTx}
 
-	// Finally, send the signed tx to the UI
 	api.UI.OnApprovedTx(response)
-	// ...and to the external caller
 	return &response, nil
 
 }
 
-//
-//
-//
 func (api *SignerAPI) Sign(ctx context.Context, addr common.MixedcaseAddress, data hexutil.Bytes) (hexutil.Bytes, error) {
 	sighash, msg := SignHash(data)
-	// We make the request prior to looking up if we actually have the account, to prevent
-	// account-enumeration via the API
 	req := &SignDataRequest{Address: addr, Rawdata: data, Message: msg, Hash: sighash, Meta: MetadataFromContext(ctx)}
 	res, err := api.UI.ApproveSignData(req)
 
@@ -328,32 +305,28 @@ func (api *SignerAPI) Sign(ctx context.Context, addr common.MixedcaseAddress, da
 	if !res.Approved {
 		return nil, ErrRequestDenied
 	}
-	// Look up the wallet containing the requested signer
 	account := accounts.Account{Address: addr.Address()}
 	wallet, err := api.am.Find(account)
 	if err != nil {
 		return nil, err
 	}
-	// Assemble sign the data with the wallet
 	signature, err := wallet.SignHashWithPassphrase(account, res.Password, sighash)
 	if err != nil {
 		api.UI.ShowError(err.Error())
 		return nil, err
 	}
-	signature[64] += 27 // Transform V from 0/1 to 27/28 according to the yellow paper
+	signature[64] += 27
 	return signature, nil
 }
 
-//
-//
 func (api *SignerAPI) EcRecover(ctx context.Context, data, sig hexutil.Bytes) (common.Address, error) {
 	if len(sig) != 65 {
 		return common.Address{}, fmt.Errorf("signature must be 65 bytes long")
 	}
 	if sig[64] != 27 && sig[64] != 28 {
-		return common.Address{}, fmt.Errorf("invalid Ethereum signature (V is not 27 or 28)")
+		return common.Address{}, fmt.Errorf("invalid CANChain signature (V is not 27 or 28)")
 	}
-	sig[64] -= 27 // Transform yellow paper V from 27/28 to 0/1
+	sig[64] -= 27
 	hash, _ := SignHash(data)
 	rpk, err := crypto.SigToPub(hash, sig)
 	if err != nil {
@@ -362,8 +335,6 @@ func (api *SignerAPI) EcRecover(ctx context.Context, data, sig hexutil.Bytes) (c
 	return crypto.PubkeyToAddress(*rpk), nil
 }
 
-//
-//
 func SignHash(data []byte) ([]byte, string) {
 	msg := fmt.Sprintf("\x19Ethereum Signed Message:\n%d%s", len(data), data)
 	return crypto.Keccak256([]byte(msg)), msg
@@ -378,7 +349,6 @@ func (api *SignerAPI) Export(ctx context.Context, addr common.Address) (json.Raw
 	if !res.Approved {
 		return nil, ErrRequestDenied
 	}
-	// Look up the wallet containing the requested signer
 	wallet, err := api.am.Find(accounts.Account{Address: addr})
 	if err != nil {
 		return nil, err

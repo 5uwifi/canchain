@@ -1,4 +1,3 @@
-
 package kernel
 
 import (
@@ -9,7 +8,6 @@ import (
 
 var senderCacher = newTxSenderCacher(runtime.NumCPU())
 
-//
 type txSenderCacherRequest struct {
 	signer types.Signer
 	txs    []*types.Transaction
@@ -41,11 +39,9 @@ func (cacher *txSenderCacher) cache() {
 }
 
 func (cacher *txSenderCacher) recover(signer types.Signer, txs []*types.Transaction) {
-	// If there's nothing to recover, abort
 	if len(txs) == 0 {
 		return
 	}
-	// Ensure we have meaningful task sizes and schedule the recoveries
 	tasks := cacher.threads
 	if len(txs) < tasks*4 {
 		tasks = (len(txs) + 3) / 4

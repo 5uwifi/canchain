@@ -1,4 +1,3 @@
-
 /*
 Package rpc provides access to the exported methods of an object across a network
 or other I/O connection. After creating a server instance objects can be registered,
@@ -43,7 +42,7 @@ An example server which uses the JSON codec:
 	return a + b
  }
 
- func (s *CalculatorService Div(a, b int) (int, error) {
+ func (s *CalculatorService) Div(a, b int) (int, error) {
 	if b == 0 {
 		return 0, errors.New("divide by zero")
 	}

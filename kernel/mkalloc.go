@@ -18,8 +18,8 @@ import (
 	"sort"
 	"strconv"
 
-	"github.com/5uwifi/canchain/kernel"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/core"
+	"github.com/5uwifi/canchain/rlp"
 )
 
 type allocItem struct{ Addr, Balance *big.Int }
@@ -30,7 +30,7 @@ func (a allocList) Len() int           { return len(a) }
 func (a allocList) Less(i, j int) bool { return a[i].Addr.Cmp(a[j].Addr) < 0 }
 func (a allocList) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 
-func makelist(g *kernel.Genesis) allocList {
+func makelist(g *core.Genesis) allocList {
 	a := make(allocList, 0, len(g.Alloc))
 	for addr, account := range g.Alloc {
 		if len(account.Storage) > 0 || len(account.Code) > 0 || account.Nonce != 0 {
@@ -42,7 +42,7 @@ func makelist(g *kernel.Genesis) allocList {
 	return a
 }
 
-func makealloc(g *kernel.Genesis) string {
+func makealloc(g *core.Genesis) string {
 	a := makelist(g)
 	data, err := rlp.EncodeToBytes(a)
 	if err != nil {
@@ -57,7 +57,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	g := new(kernel.Genesis)
+	g := new(core.Genesis)
 	file, err := os.Open(os.Args[1])
 	if err != nil {
 		panic(err)

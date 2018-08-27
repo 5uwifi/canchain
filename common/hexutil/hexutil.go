@@ -1,6 +1,6 @@
 /*
 Package hexutil implements hex encoding with 0x prefix.
-This encoding is used by the Ethereum RPC API to transport binary data in JSON payloads.
+This encoding is used by the CANChain RPC API to transport binary data in JSON payloads.
 
 Encoding Rules
 
@@ -97,8 +97,6 @@ func EncodeUint64(i uint64) string {
 var bigWordNibbles int
 
 func init() {
-	// This is a weird way to compute the number of nibbles required for big.Word.
-	// The usual way would be to use constant arithmetic but go vet can't handle that.
 	b, _ := new(big.Int).SetString("FFFFFFFFFF", 16)
 	switch len(b.Bits()) {
 	case 1:

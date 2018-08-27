@@ -1,4 +1,3 @@
-
 package kernel
 
 import (
@@ -10,18 +9,20 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/common/math"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
-	"github.com/5uwifi/canchain/basis/rlp"
 )
 
+//go:generate gencodec -type Genesis -field-override genesisSpecMarshaling -out gen_genesis.go
+//go:generate gencodec -type GenesisAccount -field-override genesisAccountMarshaling -out gen_genesis_account.go
 
 var errGenesisNoConfig = errors.New("genesis has no chain configuration")
 
@@ -36,8 +37,6 @@ type Genesis struct {
 	Coinbase   common.Address      `json:"coinbase"`
 	Alloc      GenesisAlloc        `json:"alloc"      gencodec:"required"`
 
-	// These fields are used for consensus tests. Please don't use them
-	// in actual genesis blocks.
 	Number     uint64      `json:"number"`
 	GasUsed    uint64      `json:"gasUsed"`
 	ParentHash common.Hash `json:"parentHash"`
@@ -62,7 +61,7 @@ type GenesisAccount struct {
 	Storage    map[common.Hash]common.Hash `json:"storage,omitempty"`
 	Balance    *big.Int                    `json:"balance" gencodec:"required"`
 	Nonce      uint64                      `json:"nonce,omitempty"`
-	PrivateKey []byte                      `json:"secretKey,omitempty"` // for tests
+	PrivateKey []byte                      `json:"secretKey,omitempty"`
 }
 
 type genesisSpecMarshaling struct {
@@ -91,7 +90,7 @@ func (h *storageJSON) UnmarshalText(text []byte) error {
 	if len(text) > 64 {
 		return fmt.Errorf("too many hex characters in storage key/value %q", text)
 	}
-	offset := len(h) - len(text)/2 // pad on the left
+	offset := len(h) - len(text)/2
 	if _, err := hex.Decode(h[offset:], text); err != nil {
 		fmt.Println(err)
 		return fmt.Errorf("invalid hex storage key/value %q", text)
@@ -111,16 +110,11 @@ func (e *GenesisMismatchError) Error() string {
 	return fmt.Sprintf("database already contains an incompatible genesis block (have %x, new %x)", e.Stored[:8], e.New[:8])
 }
 
-//
-//                       +------------------------------------------
-//
-//
 func SetupGenesisBlock(db candb.Database, genesis *Genesis) (*params.ChainConfig, common.Hash, error) {
 	if genesis != nil && genesis.Config == nil {
-		return params.AllEthashProtocolChanges, common.Hash{}, errGenesisNoConfig
+		return params.AllCliqueProtocolChanges, common.Hash{}, errGenesisNoConfig
 	}
 
-	// Just commit the new block if there is no stored genesis block.
 	stored := rawdb.ReadCanonicalHash(db, 0)
 	if (stored == common.Hash{}) {
 		if genesis == nil {
@@ -133,7 +127,6 @@ func SetupGenesisBlock(db candb.Database, genesis *Genesis) (*params.ChainConfig
 		return genesis.Config, block.Hash(), err
 	}
 
-	// Check whether the genesis block is already written.
 	if genesis != nil {
 		hash := genesis.ToBlock(nil).Hash()
 		if hash != stored {
@@ -141,7 +134,6 @@ func SetupGenesisBlock(db candb.Database, genesis *Genesis) (*params.ChainConfig
 		}
 	}
 
-	// Get the existing chain configuration.
 	newcfg := genesis.configOrDefault(stored)
 	storedcfg := rawdb.ReadChainConfig(db, stored)
 	if storedcfg == nil {
@@ -149,15 +141,10 @@ func SetupGenesisBlock(db candb.Database, genesis *Genesis) (*params.ChainConfig
 		rawdb.WriteChainConfig(db, stored, newcfg)
 		return newcfg, stored, nil
 	}
-	// Special case: don't change the existing config of a non-mainnet chain if no new
-	// config is supplied. These chains would get AllProtocolChanges (and a compat error)
-	// if we just continued here.
 	if genesis == nil && stored != params.MainnetGenesisHash {
 		return storedcfg, stored, nil
 	}
 
-	// Check config compatibility and write the config. Compatibility errors
-	// are returned to the caller unless we're already at block zero.
 	height := rawdb.ReadHeaderNumber(db, rawdb.ReadHeadHeaderHash(db))
 	if height == nil {
 		return newcfg, stored, fmt.Errorf("missing block number for head header hash")
@@ -179,7 +166,7 @@ func (g *Genesis) configOrDefault(ghash common.Hash) *params.ChainConfig {
 	case ghash == params.TestnetGenesisHash:
 		return params.TestnetChainConfig
 	default:
-		return params.AllEthashProtocolChanges
+		return params.AllCliqueProtocolChanges
 	}
 }
 
@@ -258,10 +245,10 @@ func GenesisBlockForTesting(db candb.Database, addr common.Address, balance *big
 func DefaultGenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.MainnetChainConfig,
-		Nonce:      66,
-		ExtraData:  hexutil.MustDecode("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa"),
+		Timestamp:  1535009276,
+		ExtraData:  hexutil.MustDecode("0xfebbe8db4e427b4e8c937c1c8370e4b5ed42adb3db69cbdb7a42e1e50b1b82fa00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   5000,
-		Difficulty: big.NewInt(17179869184),
+		Difficulty: big.NewInt(1),
 		Alloc:      decodePrealloc(mainnetAllocData),
 	}
 }
@@ -269,34 +256,43 @@ func DefaultGenesisBlock() *Genesis {
 func DefaultTestnetGenesisBlock() *Genesis {
 	return &Genesis{
 		Config:     params.TestnetChainConfig,
-		Nonce:      66,
-		ExtraData:  hexutil.MustDecode("0x3535353535353535353535353535353535353535353535353535353535353535"),
+		Timestamp:  1533168000,
+		ExtraData:  hexutil.MustDecode("0x424242424242424242424242424242424242424242424242424242424242424200000000000000000000000000000000000000010000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"),
 		GasLimit:   16777216,
-		Difficulty: big.NewInt(1048576),
+		Difficulty: big.NewInt(1),
 		Alloc:      decodePrealloc(testnetAllocData),
 	}
 }
 
+func DefaultIronmanGenesisBlock() *Genesis {
+	return &Genesis{
+		Config:     params.IronmanChainConfig,
+		Nonce:      66,
+		ExtraData:  hexutil.MustDecode("0xfebbe8db4e427b4e8c937c1c8370e4b5ed42adb3db69cbdb7a42e1e50b1b82fa"),
+		GasLimit:   4700000,
+		Difficulty: big.NewInt(1048576),
+		Alloc:      decodePrealloc(ironmanAllocData),
+	}
+}
+
 func DeveloperGenesisBlock(period uint64, faucet common.Address) *Genesis {
-	// Override the default period to the user requested one
 	config := *params.AllCliqueProtocolChanges
 	config.Clique.Period = period
 
-	// Assemble and return the genesis with the precompiles and faucet pre-funded
 	return &Genesis{
 		Config:     &config,
 		ExtraData:  append(append(make([]byte, 32), faucet[:]...), make([]byte, 65)...),
 		GasLimit:   6283185,
 		Difficulty: big.NewInt(1),
 		Alloc: map[common.Address]GenesisAccount{
-			common.BytesToAddress([]byte{1}): {Balance: big.NewInt(1)}, // ECRecover
-			common.BytesToAddress([]byte{2}): {Balance: big.NewInt(1)}, // SHA256
-			common.BytesToAddress([]byte{3}): {Balance: big.NewInt(1)}, // RIPEMD
-			common.BytesToAddress([]byte{4}): {Balance: big.NewInt(1)}, // Identity
-			common.BytesToAddress([]byte{5}): {Balance: big.NewInt(1)}, // ModExp
-			common.BytesToAddress([]byte{6}): {Balance: big.NewInt(1)}, // ECAdd
-			common.BytesToAddress([]byte{7}): {Balance: big.NewInt(1)}, // ECScalarMul
-			common.BytesToAddress([]byte{8}): {Balance: big.NewInt(1)}, // ECPairing
+			common.BytesToAddress([]byte{1}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{2}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{3}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{4}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{5}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{6}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{7}): {Balance: big.NewInt(1)},
+			common.BytesToAddress([]byte{8}): {Balance: big.NewInt(1)},
 			faucet: {Balance: new(big.Int).Sub(new(big.Int).Lsh(big.NewInt(1), 256), big.NewInt(9))},
 		},
 	}

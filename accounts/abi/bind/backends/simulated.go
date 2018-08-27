@@ -10,18 +10,18 @@ import (
 
 	"github.com/5uwifi/canchain"
 	"github.com/5uwifi/canchain/accounts/abi/bind"
+	"github.com/5uwifi/canchain/can/filters"
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
-	"github.com/5uwifi/canchain/consensus/canhash"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/bloombits"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/kernel/vm"
-	"github.com/5uwifi/canchain/ledger/filters"
-	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/event"
+	"github.com/5uwifi/canchain/lib/consensus/ethash"
+	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/params"
 	"github.com/5uwifi/canchain/rpc"
 )
@@ -32,14 +32,14 @@ var errBlockNumberUnsupported = errors.New("SimulatedBackend cannot access block
 var errGasEstimationFailed = errors.New("gas required exceeds allowance or always failing transaction")
 
 type SimulatedBackend struct {
-	database   candb.Database     // In memory database to store our testing data
-	blockchain *kernel.BlockChain // Ethereum blockchain to handle the consensus
+	database   candb.Database
+	blockchain *kernel.BlockChain
 
 	mu           sync.Mutex
-	pendingBlock *types.Block   // Currently pending block that will be imported on request
-	pendingState *state.StateDB // Currently pending state that will be the active on on request
+	pendingBlock *types.Block
+	pendingState *state.StateDB
 
-	events *filters.EventSystem // Event system for filtering log events live
+	events *filters.EventSystem
 
 	config *params.ChainConfig
 }
@@ -48,7 +48,7 @@ func NewSimulatedBackend(alloc kernel.GenesisAlloc) *SimulatedBackend {
 	database := candb.NewMemDatabase()
 	genesis := kernel.Genesis{Config: params.AllEthashProtocolChanges, Alloc: alloc}
 	genesis.MustCommit(database)
-	blockchain, _ := kernel.NewBlockChain(database, nil, genesis.Config, canhash.NewFaker(), vm.Config{})
+	blockchain, _ := kernel.NewBlockChain(database, nil, genesis.Config, ethash.NewFaker(), vm.Config{})
 
 	backend := &SimulatedBackend{
 		database:   database,
@@ -65,7 +65,7 @@ func (b *SimulatedBackend) Commit() {
 	defer b.mu.Unlock()
 
 	if _, err := b.blockchain.InsertChain([]*types.Block{b.pendingBlock}); err != nil {
-		panic(err) // This cannot happen unless the simulator is wrong, fail in that case
+		panic(err)
 	}
 	b.rollback()
 }
@@ -78,7 +78,7 @@ func (b *SimulatedBackend) Rollback() {
 }
 
 func (b *SimulatedBackend) rollback() {
-	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), canhash.NewFaker(), b.database, 1, func(int, *kernel.BlockGen) {})
+	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), ethash.NewFaker(), b.database, 1, func(int, *kernel.BlockGen) {})
 	statedb, _ := b.blockchain.State()
 
 	b.pendingBlock = blocks[0]
@@ -181,7 +181,6 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call canchain.CallMs
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	// Determine the lowest and highest possible gas limits to binary search in between
 	var (
 		lo  uint64 = params.TxGas - 1
 		hi  uint64
@@ -194,7 +193,6 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call canchain.CallMs
 	}
 	cap = hi
 
-	// Create a helper to check if a gas allowance results in an executable transaction
 	executable := func(gas uint64) bool {
 		call.Gas = gas
 
@@ -207,7 +205,6 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call canchain.CallMs
 		}
 		return true
 	}
-	// Execute the binary search and hone in on an executable gas limit
 	for lo+1 < hi {
 		mid := (hi + lo) / 2
 		if !executable(mid) {
@@ -216,7 +213,6 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call canchain.CallMs
 			hi = mid
 		}
 	}
-	// Reject the transaction as invalid if it still fails at the highest allowance
 	if hi == cap {
 		if !executable(hi) {
 			return 0, errGasEstimationFailed
@@ -226,7 +222,6 @@ func (b *SimulatedBackend) EstimateGas(ctx context.Context, call canchain.CallMs
 }
 
 func (b *SimulatedBackend) callContract(ctx context.Context, call canchain.CallMsg, block *types.Block, statedb *state.StateDB) ([]byte, uint64, bool, error) {
-	// Ensure message is initialized properly.
 	if call.GasPrice == nil {
 		call.GasPrice = big.NewInt(1)
 	}
@@ -236,15 +231,11 @@ func (b *SimulatedBackend) callContract(ctx context.Context, call canchain.CallM
 	if call.Value == nil {
 		call.Value = new(big.Int)
 	}
-	// Set infinite balance to the fake caller account.
 	from := statedb.GetOrNewStateObject(call.From)
 	from.SetBalance(math.MaxBig256)
-	// Execute the call.
 	msg := callmsg{call}
 
 	evmContext := kernel.NewEVMContext(msg, block.Header(), b.blockchain, nil)
-	// Create a new environment which holds all relevant information
-	// about the transaction and calling mechanisms.
 	vmenv := vm.NewEVM(evmContext, statedb, b.config, vm.Config{})
 	gaspool := new(kernel.GasPool).AddGas(math.MaxUint64)
 
@@ -264,7 +255,7 @@ func (b *SimulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 		panic(fmt.Errorf("invalid transaction nonce: got %d, want %d", tx.Nonce(), nonce))
 	}
 
-	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), canhash.NewFaker(), b.database, 1, func(number int, block *kernel.BlockGen) {
+	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), ethash.NewFaker(), b.database, 1, func(number int, block *kernel.BlockGen) {
 		for _, tx := range b.pendingBlock.Transactions() {
 			block.AddTxWithChain(b.blockchain, tx)
 		}
@@ -278,18 +269,20 @@ func (b *SimulatedBackend) SendTransaction(ctx context.Context, tx *types.Transa
 }
 
 func (b *SimulatedBackend) FilterLogs(ctx context.Context, query canchain.FilterQuery) ([]types.Log, error) {
-	// Initialize unset filter boundaried to run from genesis to chain head
-	from := int64(0)
-	if query.FromBlock != nil {
-		from = query.FromBlock.Int64()
+	var filter *filters.Filter
+	if query.BlockHash != nil {
+		filter = filters.NewBlockFilter(&filterBackend{b.database, b.blockchain}, *query.BlockHash, query.Addresses, query.Topics)
+	} else {
+		from := int64(0)
+		if query.FromBlock != nil {
+			from = query.FromBlock.Int64()
+		}
+		to := int64(-1)
+		if query.ToBlock != nil {
+			to = query.ToBlock.Int64()
+		}
+		filter = filters.NewRangeFilter(&filterBackend{b.database, b.blockchain}, from, to, query.Addresses, query.Topics)
 	}
-	to := int64(-1)
-	if query.ToBlock != nil {
-		to = query.ToBlock.Int64()
-	}
-	// Construct and execute the filter
-	filter := filters.New(&filterBackend{b.database, b.blockchain}, from, to, query.Addresses, query.Topics)
-
 	logs, err := filter.Logs(ctx)
 	if err != nil {
 		return nil, err
@@ -302,14 +295,12 @@ func (b *SimulatedBackend) FilterLogs(ctx context.Context, query canchain.Filter
 }
 
 func (b *SimulatedBackend) SubscribeFilterLogs(ctx context.Context, query canchain.FilterQuery, ch chan<- types.Log) (canchain.Subscription, error) {
-	// Subscribe to contract events
 	sink := make(chan []*types.Log)
 
 	sub, err := b.events.SubscribeLogs(query, sink)
 	if err != nil {
 		return nil, err
 	}
-	// Since we're getting logs in batches, we need to flatten them into a plain stream
 	return event.NewSubscription(func(quit <-chan struct{}) error {
 		defer sub.Unsubscribe()
 		for {
@@ -336,7 +327,7 @@ func (b *SimulatedBackend) SubscribeFilterLogs(ctx context.Context, query cancha
 func (b *SimulatedBackend) AdjustTime(adjustment time.Duration) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
-	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), canhash.NewFaker(), b.database, 1, func(number int, block *kernel.BlockGen) {
+	blocks, _ := kernel.GenerateChain(b.config, b.blockchain.CurrentBlock(), ethash.NewFaker(), b.database, 1, func(number int, block *kernel.BlockGen) {
 		for _, tx := range b.pendingBlock.Transactions() {
 			block.AddTx(tx)
 		}
@@ -376,6 +367,10 @@ func (fb *filterBackend) HeaderByNumber(ctx context.Context, block rpc.BlockNumb
 		return fb.bc.CurrentHeader(), nil
 	}
 	return fb.bc.GetHeaderByNumber(uint64(block.Int64())), nil
+}
+
+func (fb *filterBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+	return fb.bc.GetHeaderByHash(hash), nil
 }
 
 func (fb *filterBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {

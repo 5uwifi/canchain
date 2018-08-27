@@ -10,8 +10,8 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/privacy/canapi"
 	"golang.org/x/crypto/ssh/terminal"
 )
 
@@ -138,7 +138,6 @@ func (ui *CommandlineUI) ApproveExport(request *ExportRequest) (ExportResponse, 
 	fmt.Printf("Approving this operation means that the caller obtains the (encrypted) contents\n")
 	fmt.Printf("\n")
 	fmt.Printf("Account:  %x\n", request.Address)
-	//fmt.Printf("keyfile:  \n%v\n", request.file)
 	fmt.Printf("-------------------------------------------\n")
 	showMetadata(request.Meta)
 	return ExportResponse{ui.confirm()}, nil

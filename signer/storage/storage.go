@@ -1,5 +1,3 @@
-//
-
 package storage
 
 import (
@@ -7,9 +5,7 @@ import (
 )
 
 type Storage interface {
-	// Put stores a value by key. 0-length keys results in no-op
 	Put(key, value string)
-	// Get returns the previously stored value, or the empty string if it does not exist or key is of 0-length
 	Get(key string) string
 }
 

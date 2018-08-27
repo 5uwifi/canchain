@@ -21,16 +21,13 @@ const (
 )
 
 func Bind(types []string, abis []string, bytecodes []string, pkg string, lang Lang) (string, error) {
-	// Process each individual contract requested binding
 	contracts := make(map[string]*tmplContract)
 
 	for i := 0; i < len(types); i++ {
-		// Parse the actual ABI to generate the binding for
 		evmABI, err := abi.JSON(strings.NewReader(abis[i]))
 		if err != nil {
 			return "", err
 		}
-		// Strip any whitespace from the JSON ABI
 		strippedABI := strings.Map(func(r rune) rune {
 			if unicode.IsSpace(r) {
 				return -1
@@ -38,14 +35,12 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 			return r
 		}, abis[i])
 
-		// Extract the call and transact methods; events; and sort them alphabetically
 		var (
 			calls     = make(map[string]*tmplMethod)
 			transacts = make(map[string]*tmplMethod)
 			events    = make(map[string]*tmplEvent)
 		)
 		for _, original := range evmABI.Methods {
-			// Normalize the method for capital cases and non-anonymous inputs/outputs
 			normalized := original
 			normalized.Name = methodNormalizer[lang](original.Name)
 
@@ -63,7 +58,6 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 					normalized.Outputs[j].Name = capitalise(output.Name)
 				}
 			}
-			// Append the methods to the call or transact lists
 			if original.Const {
 				calls[original.Name] = &tmplMethod{Original: original, Normalized: normalized, Structured: structured(original.Outputs)}
 			} else {
@@ -71,25 +65,21 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 			}
 		}
 		for _, original := range evmABI.Events {
-			// Skip anonymous events as they don't support explicit filtering
 			if original.Anonymous {
 				continue
 			}
-			// Normalize the event for capital cases and non-anonymous outputs
 			normalized := original
 			normalized.Name = methodNormalizer[lang](original.Name)
 
 			normalized.Inputs = make([]abi.Argument, len(original.Inputs))
 			copy(normalized.Inputs, original.Inputs)
 			for j, input := range normalized.Inputs {
-				// Indexed fields are input, non-indexed ones are outputs
 				if input.Indexed {
 					if input.Name == "" {
 						normalized.Inputs[j].Name = fmt.Sprintf("arg%d", j)
 					}
 				}
 			}
-			// Append the event to the accumulator list
 			events[original.Name] = &tmplEvent{Original: original, Normalized: normalized}
 		}
 		contracts[types[i]] = &tmplContract{
@@ -102,7 +92,6 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 			Events:      events,
 		}
 	}
-	// Generate the contract template data content and render it
 	data := &tmplData{
 		Package:   pkg,
 		Contracts: contracts,
@@ -120,7 +109,6 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 	if err := tmpl.Execute(buffer, data); err != nil {
 		return "", err
 	}
-	// For Go bindings pass the code through goimports to clean it up and double check
 	if lang == LangGo {
 		code, err := imports.Process(".", buffer.Bytes(), nil)
 		if err != nil {
@@ -128,7 +116,6 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 		}
 		return string(code), nil
 	}
-	// For all others just return as is for now
 	return buffer.String(), nil
 }
 
@@ -137,15 +124,11 @@ var bindType = map[Lang]func(kind abi.Type) string{
 	LangJava: bindTypeJava,
 }
 
-//  (since the inner type is a prefix of the total type declaration),
-//
 func wrapArray(stringKind string, innerLen int, innerMapping string) (string, []string) {
 	remainder := stringKind[innerLen:]
-	//find all the sizes
 	matches := regexp.MustCompile(`\[(\d*)\]`).FindAllStringSubmatch(remainder, -1)
 	parts := make([]string, 0, len(matches))
 	for _, match := range matches {
-		//get group 1 from the regex match
 		parts = append(parts, match[1])
 	}
 	return innerMapping, parts
@@ -153,7 +136,6 @@ func wrapArray(stringKind string, innerLen int, innerMapping string) (string, []
 
 func arrayBindingGo(inner string, arraySizes []string) string {
 	out := ""
-	//prepend all array sizes, from outer (end arraySizes) to inner (start arraySizes)
 	for i := len(arraySizes) - 1; i >= 0; i-- {
 		out += "[" + arraySizes[i] + "]"
 	}
@@ -167,7 +149,6 @@ func bindTypeGo(kind abi.Type) string {
 	return arrayBindingGo(wrapArray(stringKind, innerLen, innerMapping))
 }
 
-// (Or just the type itself if it is not an array or slice)
 func bindUnnestedTypeGo(stringKind string) (int, string) {
 
 	switch {
@@ -198,7 +179,6 @@ func bindUnnestedTypeGo(stringKind string) (int, string) {
 }
 
 func arrayBindingJava(inner string, arraySizes []string) string {
-	// Java array type declarations do not include the length.
 	return inner + strings.Repeat("[]", len(arraySizes))
 }
 
@@ -208,7 +188,6 @@ func bindTypeJava(kind abi.Type) string {
 	return arrayBindingJava(wrapArray(stringKind, innerLen, innerMapping))
 }
 
-// (Or just the type itself if it is not an array or slice)
 func bindUnnestedTypeJava(stringKind string) (int, string) {
 
 	switch {
@@ -230,8 +209,6 @@ func bindUnnestedTypeJava(stringKind string) (int, string) {
 		return len(parts[0]), "byte[]"
 
 	case strings.HasPrefix(stringKind, "int") || strings.HasPrefix(stringKind, "uint"):
-		//Note that uint and int (without digits) are also matched,
-		// these are size 256, and will translate to BigInt (the default).
 		parts := regexp.MustCompile(`(u)?int([0-9]*)`).FindStringSubmatch(stringKind)
 		if len(parts) != 3 {
 			return len(stringKind), stringKind
@@ -244,7 +221,6 @@ func bindUnnestedTypeJava(stringKind string) (int, string) {
 			"64": "long",
 		}[parts[2]]
 
-		//default to BigInt
 		if namedSize == "" {
 			namedSize = "BigInt"
 		}
@@ -375,12 +351,9 @@ func structured(args abi.Arguments) bool {
 	}
 	exists := make(map[string]bool)
 	for _, out := range args {
-		// If the name is anonymous, we can't organize into a struct
 		if out.Name == "" {
 			return false
 		}
-		// If the field name is empty when normalized or collides (var, Var, _var, _Var),
-		// we can't organize into a struct
 		field := capitalise(out.Name)
 		if field == "" || exists[field] {
 			return false

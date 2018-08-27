@@ -4,8 +4,8 @@ import (
 	"context"
 	"net"
 
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/p2p/netutil"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/p2p/netutil"
 )
 
 func (srv *Server) ServeListener(l net.Listener) error {

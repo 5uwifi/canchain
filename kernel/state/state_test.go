@@ -5,9 +5,9 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
 	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/lib/crypto"
 	checker "gopkg.in/check.v1"
 )
 
@@ -21,7 +21,6 @@ var _ = checker.Suite(&StateSuite{})
 var toAddr = common.BytesToAddress
 
 func (s *StateSuite) TestDump(c *checker.C) {
-	// generate a few entries
 	obj1 := s.state.GetOrNewStateObject(toAddr([]byte{0x01}))
 	obj1.AddBalance(big.NewInt(22))
 	obj2 := s.state.GetOrNewStateObject(toAddr([]byte{0x01, 0x02}))
@@ -29,17 +28,15 @@ func (s *StateSuite) TestDump(c *checker.C) {
 	obj3 := s.state.GetOrNewStateObject(toAddr([]byte{0x02}))
 	obj3.SetBalance(big.NewInt(44))
 
-	// write some of them to the trie
 	s.state.updateStateObject(obj1)
 	s.state.updateStateObject(obj2)
 	s.state.Commit(false)
 
-	// check that dump contains the state objects that are in trie
 	got := string(s.state.Dump())
 	want := `{
-    "root": "985385c37610bf2fafb1a7ffc2417e1a57e6495fa68ce852329dfcc7efe84a4f",
+    "root": "71edff0130dd2385947095001c73d9e28d862fc286fca2b922ca6f6f3cddfdd2",
     "accounts": {
-        "0000000000000000000000000000000000000000000000000001": {
+        "0000000000000000000000000000000000000001": {
             "balance": "22",
             "nonce": 0,
             "root": "56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -47,7 +44,7 @@ func (s *StateSuite) TestDump(c *checker.C) {
             "code": "",
             "storage": {}
         },
-        "0000000000000000000000000000000000000000000000000002": {
+        "0000000000000000000000000000000000000002": {
             "balance": "44",
             "nonce": 0,
             "root": "56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -55,7 +52,7 @@ func (s *StateSuite) TestDump(c *checker.C) {
             "code": "",
             "storage": {}
         },
-        "0000000000000000000000000000000000000000000000000102": {
+        "0000000000000000000000000000000000000102": {
             "balance": "0",
             "nonce": 0,
             "root": "56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421",
@@ -78,7 +75,6 @@ func (s *StateSuite) SetUpTest(c *checker.C) {
 func (s *StateSuite) TestNull(c *checker.C) {
 	address := common.HexToAddress("0x823140710bf13990e4500136726d8b55")
 	s.state.CreateAccount(address)
-	//value := common.FromHex("0x823140710bf13990e4500136726d8b55")
 	var value common.Hash
 	s.state.SetState(address, common.Hash{}, value)
 	s.state.Commit(false)
@@ -94,17 +90,12 @@ func (s *StateSuite) TestSnapshot(c *checker.C) {
 	data1 := common.BytesToHash([]byte{42})
 	data2 := common.BytesToHash([]byte{43})
 
-	// set initial state object value
 	s.state.SetState(stateobjaddr, storageaddr, data1)
-	// get snapshot of current state
 	snapshot := s.state.Snapshot()
 
-	// set new state object value
 	s.state.SetState(stateobjaddr, storageaddr, data2)
-	// restore snapshot
 	s.state.RevertToSnapshot(snapshot)
 
-	// get state storage value
 	res := s.state.GetState(stateobjaddr, storageaddr)
 
 	c.Assert(data1, checker.DeepEquals, res)
@@ -114,8 +105,6 @@ func (s *StateSuite) TestSnapshotEmpty(c *checker.C) {
 	s.state.RevertToSnapshot(s.state.Snapshot())
 }
 
-// use testing instead of checker because checker does not support
-// printing/logging in tests (-check.vv does not work)
 func TestSnapshot2(t *testing.T) {
 	state, _ := New(common.Hash{}, NewDatabase(candb.NewMemDatabase()))
 
@@ -129,7 +118,6 @@ func TestSnapshot2(t *testing.T) {
 	state.SetState(stateobjaddr0, storageaddr, data0)
 	state.SetState(stateobjaddr1, storageaddr, data1)
 
-	// db, trie are already non-empty values
 	so0 := state.getStateObject(stateobjaddr0)
 	so0.SetBalance(big.NewInt(42))
 	so0.SetNonce(43)
@@ -141,7 +129,6 @@ func TestSnapshot2(t *testing.T) {
 	root, _ := state.Commit(false)
 	state.Reset(root)
 
-	// and one with deleted == true
 	so1 := state.getStateObject(stateobjaddr1)
 	so1.SetBalance(big.NewInt(52))
 	so1.SetNonce(53)
@@ -159,13 +146,10 @@ func TestSnapshot2(t *testing.T) {
 	state.RevertToSnapshot(snapshot)
 
 	so0Restored := state.getStateObject(stateobjaddr0)
-	// Update lazily-loaded values before comparing.
 	so0Restored.GetState(state.db, storageaddr)
 	so0Restored.Code(state.db)
-	// non-deleted is equal (restored)
 	compareStateObjects(so0Restored, so0, t)
 
-	// deleted should be nil, both before and after restore of state copy
 	so1Restored := state.getStateObject(stateobjaddr1)
 	if so1Restored != nil {
 		t.Fatalf("deleted object not nil after restoring snapshot: %+v", so1Restored)

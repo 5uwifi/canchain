@@ -1,4 +1,3 @@
-
 package rpc
 
 import (
@@ -8,9 +7,7 @@ import (
 )
 
 var (
-	// ErrNotificationsUnsupported is returned when the connection doesn't support notifications
 	ErrNotificationsUnsupported = errors.New("notifications not supported")
-	// ErrNotificationNotFound is returned when the notification for the given id is not found
 	ErrSubscriptionNotFound = errors.New("subscription not found")
 )
 
@@ -19,7 +16,7 @@ type ID string
 type Subscription struct {
 	ID        ID
 	namespace string
-	err       chan error // closed on unsubscribe
+	err       chan error
 }
 
 func (s *Subscription) Err() <-chan error {
@@ -30,7 +27,7 @@ type notifierKey struct{}
 
 type Notifier struct {
 	codec    ServerCodec
-	subMu    sync.RWMutex // guards active and inactive maps
+	subMu    sync.RWMutex
 	active   map[ID]*Subscription
 	inactive map[ID]*Subscription
 }

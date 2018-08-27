@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 type Event struct {

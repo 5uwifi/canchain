@@ -1,19 +1,3 @@
-// Copyright 2016 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 // +build none
 
 /*
@@ -26,14 +10,8 @@ Available commands are:
    install    [ -arch architecture ] [ -cc compiler ] [ packages... ]                          -- builds packages and executables
    test       [ -coverage ] [ packages... ]                                                    -- runs the tests
    lint                                                                                        -- runs certain pre-selected linters
-   archive    [ -arch architecture ] [ -type zip|tar ] [ -signer key-envvar ] [ -upload dest ] -- archives build artefacts
    importkeys                                                                                  -- imports signing keys from env
-   debsrc     [ -signer key-id ] [ -upload dest ]                                              -- creates a debian source package
-   nsis                                                                                        -- creates a Windows NSIS installer
-   aar        [ -local ] [ -sign key-id ] [-deploy repo] [ -upload dest ]                      -- creates an Android archive
-   xcode      [ -local ] [ -sign key-id ] [-deploy repo] [ -upload dest ]                      -- creates an iOS XCode framework
    xgo        [ -alltools ] [ options ]                                                        -- cross builds according to options
-   purge      [ -store blobstore ] [ -days threshold ]                                         -- purges old archives from the blobstore
 
 For all commands, -n prevents execution of external programs (dry run mode).
 
@@ -52,7 +30,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
-	"github.com/5uwifi/canchain/internal/build"
+	"github.com/5uwifi/canchain/privacy/build"
 )
 
 var (
@@ -60,11 +38,12 @@ var (
 	allToolsArchiveFiles = []string{
 		executablePath("abigen"),
 		executablePath("bootnode"),
-		executablePath("can"),
+		executablePath("gcan"),
 		executablePath("rlpdump"),
-		executablePath("swarm"),
-		executablePath("wnode"),
 	}
+
+	// Packages to be cross-compiled by the xgo command
+	allCrossCompiledArchiveFiles = append(allToolsArchiveFiles, []string{}...)
 )
 
 var GOBIN, _ = filepath.Abs(filepath.Join("build", "bin"))
@@ -118,7 +97,7 @@ func doInstall(cmdline []string) {
 
 		if minor < 9 {
 			log.Println("You have Go version", runtime.Version())
-			log.Println("CANChain requires at least Go version 1.9 and cannot")
+			log.Println("canchain requires at least Go version 1.9 and cannot")
 			log.Println("be compiled with an earlier version. Please upgrade your Go installation.")
 			os.Exit(1)
 		}
@@ -151,9 +130,9 @@ func doInstall(cmdline []string) {
 	goinstall.Args = append(goinstall.Args, packages...)
 	build.MustRun(goinstall)
 
-	if cmds, err := ioutil.ReadDir("helper"); err == nil {
+	if cmds, err := ioutil.ReadDir("cmd"); err == nil {
 		for _, cmd := range cmds {
-			pkgs, err := parser.ParseDir(token.NewFileSet(), filepath.Join(".", "helper", cmd.Name()), nil, parser.PackageClauseOnly)
+			pkgs, err := parser.ParseDir(token.NewFileSet(), filepath.Join(".", "cmd", cmd.Name()), nil, parser.PackageClauseOnly)
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -297,10 +276,10 @@ func doXgo(cmdline []string) {
 
 	if *alltools {
 		args = append(args, []string{"--dest", GOBIN}...)
-		for _, res := range allToolsArchiveFiles {
+		for _, res := range allCrossCompiledArchiveFiles {
 			if strings.HasPrefix(res, GOBIN) {
 				// Binary tool found, cross build it explicitly
-				args = append(args, "./"+filepath.Join("helper", filepath.Base(res)))
+				args = append(args, "./"+filepath.Join("cmd", filepath.Base(res)))
 				xgo := xgoTool(args)
 				build.MustRun(xgo)
 				args = args[:len(args)-1]

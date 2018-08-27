@@ -5,7 +5,7 @@ import (
 	"math/big"
 
 	"github.com/5uwifi/canchain/common/hexutil"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 type bytesBacked interface {
@@ -13,10 +13,8 @@ type bytesBacked interface {
 }
 
 const (
-	// BloomByteLength represents the number of bytes used in a header log bloom.
 	BloomByteLength = 256
 
-	// BloomBitLength represents the number of bits used in a header log bloom.
 	BloomBitLength = 8 * BloomByteLength
 )
 

@@ -5,25 +5,20 @@ import (
 	"testing"
 
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
-// Tests that transactions can be added to strict lists and list contents and
-// nonce boundaries are correctly maintained.
 func TestStrictTxListAdd(t *testing.T) {
-	// Generate a list of transactions to insert
 	key, _ := crypto.GenerateKey()
 
 	txs := make(types.Transactions, 1024)
 	for i := 0; i < len(txs); i++ {
 		txs[i] = transaction(uint64(i), 0, key)
 	}
-	// Insert the transactions in a random order
 	list := newTxList(true)
 	for _, v := range rand.Perm(len(txs)) {
 		list.Add(txs[v], DefaultTxPoolConfig.PriceBump)
 	}
-	// Verify internal state
 	if len(list.txs.items) != len(txs) {
 		t.Errorf("transaction count mismatch: have %d, want %d", len(list.txs.items), len(txs))
 	}

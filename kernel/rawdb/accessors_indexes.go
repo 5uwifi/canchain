@@ -1,11 +1,10 @@
-
 package rawdb
 
 import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/rlp"
 )
 
 func ReadTxLookupEntry(db DatabaseReader, hash common.Hash) (common.Hash, uint64, uint64) {

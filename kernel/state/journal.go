@@ -7,16 +7,14 @@ import (
 )
 
 type journalEntry interface {
-	// revert undoes the changes introduced by this journal entry.
 	revert(*StateDB)
 
-	// dirtied returns the Ethereum address modified by this journal entry.
 	dirtied() *common.Address
 }
 
 type journal struct {
-	entries []journalEntry         // Current changes tracked by the journal
-	dirties map[common.Address]int // Dirty accounts and the number of changes
+	entries []journalEntry
+	dirties map[common.Address]int
 }
 
 func newJournal() *journal {
@@ -34,10 +32,8 @@ func (j *journal) append(entry journalEntry) {
 
 func (j *journal) revert(statedb *StateDB, snapshot int) {
 	for i := len(j.entries) - 1; i >= snapshot; i-- {
-		// Undo the changes made by the operation
 		j.entries[i].revert(statedb)
 
-		// Drop any dirty tracking induced by the change
 		if addr := j.entries[i].dirtied(); addr != nil {
 			if j.dirties[*addr]--; j.dirties[*addr] == 0 {
 				delete(j.dirties, *addr)
@@ -56,7 +52,6 @@ func (j *journal) length() int {
 }
 
 type (
-	// Changes to the account trie.
 	createObjectChange struct {
 		account *common.Address
 	}
@@ -65,11 +60,10 @@ type (
 	}
 	suicideChange struct {
 		account     *common.Address
-		prev        bool // whether account had already suicided
+		prev        bool
 		prevbalance *big.Int
 	}
 
-	// Changes to individual accounts.
 	balanceChange struct {
 		account *common.Address
 		prev    *big.Int
@@ -87,7 +81,6 @@ type (
 		prevcode, prevhash []byte
 	}
 
-	// Changes to other state values.
 	refundChange struct {
 		prev uint64
 	}

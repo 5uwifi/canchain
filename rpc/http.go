@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/rs/cors"
 )
 
@@ -47,6 +48,20 @@ func (hc *httpConn) Read(b []byte) (int, error) {
 func (hc *httpConn) Close() error {
 	hc.closeOnce.Do(func() { close(hc.closed) })
 	return nil
+}
+
+type HTTPTimeouts struct {
+	ReadTimeout time.Duration
+
+	WriteTimeout time.Duration
+
+	IdleTimeout time.Duration
+}
+
+var DefaultHTTPTimeouts = HTTPTimeouts{
+	ReadTimeout:  30 * time.Second,
+	WriteTimeout: 30 * time.Second,
+	IdleTimeout:  120 * time.Second,
 }
 
 func DialHTTPWithClient(endpoint string, client *http.Client) (*Client, error) {
@@ -136,21 +151,31 @@ func (t *httpReadWriteNopCloser) Close() error {
 	return nil
 }
 
-//
-func NewHTTPServer(cors []string, vhosts []string, srv *Server) *http.Server {
-	// Wrap the CORS-handler within a host-handler
+func NewHTTPServer(cors []string, vhosts []string, timeouts HTTPTimeouts, srv *Server) *http.Server {
 	handler := newCorsHandler(srv, cors)
 	handler = newVHostHandler(vhosts, handler)
+
+	if timeouts.ReadTimeout < time.Second {
+		log4j.Warn("Sanitizing invalid HTTP read timeout", "provided", timeouts.ReadTimeout, "updated", DefaultHTTPTimeouts.ReadTimeout)
+		timeouts.ReadTimeout = DefaultHTTPTimeouts.ReadTimeout
+	}
+	if timeouts.WriteTimeout < time.Second {
+		log4j.Warn("Sanitizing invalid HTTP write timeout", "provided", timeouts.WriteTimeout, "updated", DefaultHTTPTimeouts.WriteTimeout)
+		timeouts.WriteTimeout = DefaultHTTPTimeouts.WriteTimeout
+	}
+	if timeouts.IdleTimeout < time.Second {
+		log4j.Warn("Sanitizing invalid HTTP idle timeout", "provided", timeouts.IdleTimeout, "updated", DefaultHTTPTimeouts.IdleTimeout)
+		timeouts.IdleTimeout = DefaultHTTPTimeouts.IdleTimeout
+	}
 	return &http.Server{
 		Handler:      handler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  120 * time.Second,
+		ReadTimeout:  timeouts.ReadTimeout,
+		WriteTimeout: timeouts.WriteTimeout,
+		IdleTimeout:  timeouts.IdleTimeout,
 	}
 }
 
 func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Permit dumb empty requests for remote health-checks (AWS)
 	if r.Method == http.MethodGet && r.ContentLength == 0 && r.URL.RawQuery == "" {
 		return
 	}
@@ -158,9 +183,6 @@ func (srv *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), code)
 		return
 	}
-	// All checks passed, create a codec that reads direct from the request body
-	// untilEOF and writes the response to w and order the server to process a
-	// single request.
 	ctx := r.Context()
 	ctx = context.WithValue(ctx, "remote", r.RemoteAddr)
 	ctx = context.WithValue(ctx, "scheme", r.Proto)
@@ -191,7 +213,6 @@ func validateRequest(r *http.Request) (int, error) {
 }
 
 func newCorsHandler(srv *Server, allowedOrigins []string) http.Handler {
-	// disable CORS support if user has not specified a custom CORS configuration
 	if len(allowedOrigins) == 0 {
 		return srv
 	}
@@ -210,23 +231,19 @@ type virtualHostHandler struct {
 }
 
 func (h *virtualHostHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// if r.Host is not set, we can continue serving since a browser would set the Host header
 	if r.Host == "" {
 		h.next.ServeHTTP(w, r)
 		return
 	}
 	host, _, err := net.SplitHostPort(r.Host)
 	if err != nil {
-		// Either invalid (too many colons) or no port specified
 		host = r.Host
 	}
 	if ipAddr := net.ParseIP(host); ipAddr != nil {
-		// It's an IP address, we can serve that
 		h.next.ServeHTTP(w, r)
 		return
 
 	}
-	// Not an ip address, but a hostname. Need to validate
 	if _, exist := h.vhosts["*"]; exist {
 		h.next.ServeHTTP(w, r)
 		return

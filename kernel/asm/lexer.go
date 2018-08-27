@@ -1,4 +1,3 @@
-
 package asm
 
 import (
@@ -20,19 +19,19 @@ type token struct {
 type tokenType int
 
 const (
-	eof              tokenType = iota // end of file
-	lineStart                         // emitted when a line starts
-	lineEnd                           // emitted when a line ends
-	invalidStatement                  // any invalid statement
-	element                           // any element during element parsing
-	label                             // label is emitted when a label is found
-	labelDef                          // label definition is emitted when a new label is found
-	number                            // number is emitted when a number is found
-	stringValue                       // stringValue is emitted when a string has been found
+	eof              tokenType = iota
+	lineStart
+	lineEnd
+	invalidStatement
+	element
+	label
+	labelDef
+	number
+	stringValue
 
-	Numbers            = "1234567890"                                           // characters representing any decimal number
-	HexadecimalNumbers = Numbers + "aAbBcCdDeEfF"                               // characters representing any hexadecimal
-	Alpha              = "abcdefghijklmnopqrstuwvxyzABCDEFGHIJKLMNOPQRSTUWVXYZ" // characters representing alphanumeric
+	Numbers            = "1234567890"
+	HexadecimalNumbers = Numbers + "aAbBcCdDeEfF"
+	Alpha              = "abcdefghijklmnopqrstuwvxyzABCDEFGHIJKLMNOPQRSTUWVXYZ"
 )
 
 func (it tokenType) String() string {
@@ -55,15 +54,15 @@ var stringtokenTypes = []string{
 }
 
 type lexer struct {
-	input string // input contains the source code of the program
+	input string
 
-	tokens chan token // tokens is used to deliver tokens to the listener
-	state  stateFn    // the current state function
+	tokens chan token
+	state  stateFn
 
-	lineno            int // current line number in the source file
-	start, pos, width int // positions for lexing and returning value
+	lineno            int
+	start, pos, width int
 
-	debug bool // flag for triggering debug output
+	debug bool
 }
 
 func Lex(name string, source []byte, debug bool) <-chan token {
@@ -127,7 +126,6 @@ func (l *lexer) acceptRun(valid string) {
 }
 
 func (l *lexer) acceptRunUntil(until rune) bool {
-	// Continues running until a rune is found
 	for i := l.next(); !strings.ContainsRune(string(until), i); i = l.next() {
 		if i == 0 {
 			return false

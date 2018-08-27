@@ -13,7 +13,7 @@ import (
 )
 
 func newTestLDB() (*candb.LDBDatabase, func()) {
-	dirname, err := ioutil.TempDir(os.TempDir(), "candb_test_")
+	dirname, err := ioutil.TempDir(os.TempDir(), "ethdb_test_")
 	if err != nil {
 		panic("failed to create test file: " + err.Error())
 	}
@@ -42,6 +42,28 @@ func TestMemoryDB_PutGet(t *testing.T) {
 
 func testPutGet(db candb.Database, t *testing.T) {
 	t.Parallel()
+
+	for _, k := range test_values {
+		err := db.Put([]byte(k), nil)
+		if err != nil {
+			t.Fatalf("put failed: %v", err)
+		}
+	}
+
+	for _, k := range test_values {
+		data, err := db.Get([]byte(k))
+		if err != nil {
+			t.Fatalf("get failed: %v", err)
+		}
+		if len(data) != 0 {
+			t.Fatalf("get returned wrong result, got %q expected nil", string(data))
+		}
+	}
+
+	_, err := db.Get([]byte("non-exist-key"))
+	if err == nil {
+		t.Fatalf("expect to return a not found error")
+	}
 
 	for _, v := range test_values {
 		err := db.Put([]byte(v), []byte(v))

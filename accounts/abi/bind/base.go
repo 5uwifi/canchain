@@ -10,49 +10,49 @@ import (
 	"github.com/5uwifi/canchain/accounts/abi"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/event"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/event"
 )
 
 type SignerFn func(types.Signer, common.Address, *types.Transaction) (*types.Transaction, error)
 
 type CallOpts struct {
-	Pending bool           // Whether to operate on the pending state or the last known one
-	From    common.Address // Optional the sender address, otherwise the first account is used
+	Pending bool
+	From    common.Address
 
-	Context context.Context // Network context to support cancellation and timeouts (nil = no timeout)
+	Context context.Context
 }
 
 type TransactOpts struct {
-	From   common.Address // Ethereum account to send the transaction from
-	Nonce  *big.Int       // Nonce to use for the transaction execution (nil = use pending state)
-	Signer SignerFn       // Method to use for signing the transaction (mandatory)
+	From   common.Address
+	Nonce  *big.Int
+	Signer SignerFn
 
-	Value    *big.Int // Funds to transfer along along the transaction (nil = 0 = no funds)
-	GasPrice *big.Int // Gas price to use for the transaction execution (nil = gas price oracle)
-	GasLimit uint64   // Gas limit to set for the transaction execution (0 = estimate)
+	Value    *big.Int
+	GasPrice *big.Int
+	GasLimit uint64
 
-	Context context.Context // Network context to support cancellation and timeouts (nil = no timeout)
+	Context context.Context
 }
 
 type FilterOpts struct {
-	Start uint64  // Start of the queried range
-	End   *uint64 // End of the range (nil = latest)
+	Start uint64
+	End   *uint64
 
-	Context context.Context // Network context to support cancellation and timeouts (nil = no timeout)
+	Context context.Context
 }
 
 type WatchOpts struct {
-	Start   *uint64         // Start of the queried range (nil = latest)
-	Context context.Context // Network context to support cancellation and timeouts (nil = no timeout)
+	Start   *uint64
+	Context context.Context
 }
 
 type BoundContract struct {
-	address    common.Address     // Deployment address of the contract on the Ethereum blockchain
-	abi        abi.ABI            // Reflect based ABI to access the correct Ethereum methods
-	caller     ContractCaller     // Read interface to interact with the blockchain
-	transactor ContractTransactor // Write interface to interact with the blockchain
-	filterer   ContractFilterer   // Event filtering to interact with the blockchain
+	address    common.Address
+	abi        abi.ABI
+	caller     ContractCaller
+	transactor ContractTransactor
+	filterer   ContractFilterer
 }
 
 func NewBoundContract(address common.Address, abi abi.ABI, caller ContractCaller, transactor ContractTransactor, filterer ContractFilterer) *BoundContract {
@@ -66,7 +66,6 @@ func NewBoundContract(address common.Address, abi abi.ABI, caller ContractCaller
 }
 
 func DeployContract(opts *TransactOpts, abi abi.ABI, bytecode []byte, backend ContractBackend, params ...interface{}) (common.Address, *types.Transaction, *BoundContract, error) {
-	// Otherwise try to deploy the contract
 	c := NewBoundContract(common.Address{}, abi, backend, backend, backend)
 
 	input, err := c.abi.Pack("", params...)
@@ -82,11 +81,9 @@ func DeployContract(opts *TransactOpts, abi abi.ABI, bytecode []byte, backend Co
 }
 
 func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, params ...interface{}) error {
-	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(CallOpts)
 	}
-	// Pack the input, call and unpack the results
 	input, err := c.abi.Pack(method, params...)
 	if err != nil {
 		return err
@@ -104,7 +101,6 @@ func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, 
 		}
 		output, err = pb.PendingCallContract(ctx, msg)
 		if err == nil && len(output) == 0 {
-			// Make sure we have a contract to operate on, and bail out otherwise.
 			if code, err = pb.PendingCodeAt(ctx, c.address); err != nil {
 				return err
 			} else if len(code) == 0 {
@@ -114,7 +110,6 @@ func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, 
 	} else {
 		output, err = c.caller.CallContract(ctx, msg, nil)
 		if err == nil && len(output) == 0 {
-			// Make sure we have a contract to operate on, and bail out otherwise.
 			if code, err = c.caller.CodeAt(ctx, c.address, nil); err != nil {
 				return err
 			} else if len(code) == 0 {
@@ -129,7 +124,6 @@ func (c *BoundContract) Call(opts *CallOpts, result interface{}, method string, 
 }
 
 func (c *BoundContract) Transact(opts *TransactOpts, method string, params ...interface{}) (*types.Transaction, error) {
-	// Otherwise pack up the parameters and invoke the contract
 	input, err := c.abi.Pack(method, params...)
 	if err != nil {
 		return nil, err
@@ -144,7 +138,6 @@ func (c *BoundContract) Transfer(opts *TransactOpts) (*types.Transaction, error)
 func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, input []byte) (*types.Transaction, error) {
 	var err error
 
-	// Ensure a valid value field and resolve the account nonce
 	value := opts.Value
 	if value == nil {
 		value = new(big.Int)
@@ -158,7 +151,6 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 	} else {
 		nonce = opts.Nonce.Uint64()
 	}
-	// Figure out the gas allowance and gas price values
 	gasPrice := opts.GasPrice
 	if gasPrice == nil {
 		gasPrice, err = c.transactor.SuggestGasPrice(ensureContext(opts.Context))
@@ -168,7 +160,6 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 	}
 	gasLimit := opts.GasLimit
 	if gasLimit == 0 {
-		// Gas estimation cannot succeed without code for method invocations
 		if contract != nil {
 			if code, err := c.transactor.PendingCodeAt(ensureContext(opts.Context), c.address); err != nil {
 				return nil, err
@@ -176,14 +167,12 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 				return nil, ErrNoCode
 			}
 		}
-		// If the contract surely has code (or code is not needed), estimate the transaction
 		msg := canchain.CallMsg{From: opts.From, To: contract, Value: value, Data: input}
 		gasLimit, err = c.transactor.EstimateGas(ensureContext(opts.Context), msg)
 		if err != nil {
 			return nil, fmt.Errorf("failed to estimate gas needed: %v", err)
 		}
 	}
-	// Create the transaction, sign it and schedule it for execution
 	var rawTx *types.Transaction
 	if contract == nil {
 		rawTx = types.NewContractCreation(nonce, value, gasLimit, gasPrice, input)
@@ -204,18 +193,15 @@ func (c *BoundContract) transact(opts *TransactOpts, contract *common.Address, i
 }
 
 func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]interface{}) (chan types.Log, event.Subscription, error) {
-	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(FilterOpts)
 	}
-	// Append the event selector to the query parameters and construct the topic set
 	query = append([][]interface{}{{c.abi.Events[name].Id()}}, query...)
 
 	topics, err := makeTopics(query...)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Start the background filtering
 	logs := make(chan types.Log, 128)
 
 	config := canchain.FilterQuery{
@@ -251,18 +237,15 @@ func (c *BoundContract) FilterLogs(opts *FilterOpts, name string, query ...[]int
 }
 
 func (c *BoundContract) WatchLogs(opts *WatchOpts, name string, query ...[]interface{}) (chan types.Log, event.Subscription, error) {
-	// Don't crash on a lazy user
 	if opts == nil {
 		opts = new(WatchOpts)
 	}
-	// Append the event selector to the query parameters and construct the topic set
 	query = append([][]interface{}{{c.abi.Events[name].Id()}}, query...)
 
 	topics, err := makeTopics(query...)
 	if err != nil {
 		return nil, nil, err
 	}
-	// Start the background filtering
 	logs := make(chan types.Log, 128)
 
 	config := canchain.FilterQuery{

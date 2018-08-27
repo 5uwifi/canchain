@@ -1,4 +1,3 @@
-
 package vm
 
 import (
@@ -40,6 +39,10 @@ func memoryMStore(stack *Stack) *big.Int {
 }
 
 func memoryCreate(stack *Stack) *big.Int {
+	return calcMemSize(stack.Back(1), stack.Back(2))
+}
+
+func memoryCreate2(stack *Stack) *big.Int {
 	return calcMemSize(stack.Back(1), stack.Back(2))
 }
 

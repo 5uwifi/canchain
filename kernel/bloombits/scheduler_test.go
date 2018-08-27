@@ -10,9 +10,6 @@ import (
 	"time"
 )
 
-// Tests that the scheduler can deduplicate and forward retrieval requests to
-// underlying fetchers and serve responses back, irrelevant of the concurrency
-// of the requesting clients or serving data fetchers.
 func TestSchedulerSingleClientSingleFetcher(t *testing.T) { testScheduler(t, 1, 1, 5000) }
 func TestSchedulerSingleClientMultiFetcher(t *testing.T)  { testScheduler(t, 1, 10, 5000) }
 func TestSchedulerMultiClientSingleFetcher(t *testing.T)  { testScheduler(t, 10, 1, 5000) }
@@ -21,8 +18,6 @@ func TestSchedulerMultiClientMultiFetcher(t *testing.T)   { testScheduler(t, 10,
 func testScheduler(t *testing.T, clients int, fetchers int, requests int) {
 	f := newScheduler(0)
 
-	// Create a batch of handler goroutines that respond to bloom bit requests and
-	// deliver them to the scheduler.
 	var fetchPend sync.WaitGroup
 	fetchPend.Add(fetchers)
 	defer fetchPend.Wait()
@@ -40,9 +35,9 @@ func testScheduler(t *testing.T, clients int, fetchers int, requests int) {
 				atomic.AddUint32(&delivered, 1)
 
 				f.deliver([]uint64{
-					req.section + uint64(requests), // Non-requested data (ensure it doesn't go out of bounds)
-					req.section,                    // Requested data
-					req.section,                    // Duplicated data (ensure it doesn't double close anything)
+					req.section + uint64(requests),
+					req.section,
+					req.section,
 				}, [][]byte{
 					{},
 					new(big.Int).SetUint64(req.section).Bytes(),
@@ -51,7 +46,6 @@ func testScheduler(t *testing.T, clients int, fetchers int, requests int) {
 			}
 		}()
 	}
-	// Start a batch of goroutines to concurrently run scheduling tasks
 	quit := make(chan struct{})
 
 	var pend sync.WaitGroup

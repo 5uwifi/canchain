@@ -16,8 +16,8 @@ import (
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/event"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/event"
 )
 
 var (
@@ -33,15 +33,15 @@ const KeyStoreScheme = "keystore"
 const walletRefreshCycle = 3 * time.Second
 
 type KeyStore struct {
-	storage  keyStore                     // Storage backend, might be cleartext or encrypted
-	cache    *accountCache                // In-memory account cache over the filesystem storage
-	changes  chan struct{}                // Channel receiving change notifications from the cache
-	unlocked map[common.Address]*unlocked // Currently unlocked account (decrypted private keys)
+	storage  keyStore
+	cache    *accountCache
+	changes  chan struct{}
+	unlocked map[common.Address]*unlocked
 
-	wallets     []accounts.Wallet       // Wallet wrappers around the individual key files
-	updateFeed  event.Feed              // Event feed to notify wallet additions/removals
-	updateScope event.SubscriptionScope // Subscription scope tracking current live listeners
-	updating    bool                    // Whether the event notification loop is running
+	wallets     []accounts.Wallet
+	updateFeed  event.Feed
+	updateScope event.SubscriptionScope
+	updating    bool
 
 	mu sync.RWMutex
 }
@@ -66,21 +66,15 @@ func NewPlaintextKeyStore(keydir string) *KeyStore {
 }
 
 func (ks *KeyStore) init(keydir string) {
-	// Lock the mutex since the account cache might call back with events
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	// Initialize the set of unlocked keys and the account cache
 	ks.unlocked = make(map[common.Address]*unlocked)
 	ks.cache, ks.changes = newAccountCache(keydir)
 
-	// TODO: In order for this finalizer to work, there must be no references
-	// to ks. addressCache doesn't keep a reference but unlocked keys do,
-	// so the finalizer will not trigger until all timed unlocks have expired.
 	runtime.SetFinalizer(ks, func(m *KeyStore) {
 		m.cache.close()
 	})
-	// Create the initial list of wallets from the cache
 	accs := ks.cache.accounts()
 	ks.wallets = make([]accounts.Wallet, len(accs))
 	for i := 0; i < len(accs); i++ {
@@ -89,7 +83,6 @@ func (ks *KeyStore) init(keydir string) {
 }
 
 func (ks *KeyStore) Wallets() []accounts.Wallet {
-	// Make sure the list of wallets is in sync with the account cache
 	ks.refreshWallets()
 
 	ks.mu.RLock()
@@ -101,21 +94,17 @@ func (ks *KeyStore) Wallets() []accounts.Wallet {
 }
 
 func (ks *KeyStore) refreshWallets() {
-	// Retrieve the current list of accounts
 	ks.mu.Lock()
 	accs := ks.cache.accounts()
 
-	// Transform the current list of wallets into the new one
 	wallets := make([]accounts.Wallet, 0, len(accs))
 	events := []accounts.WalletEvent{}
 
 	for _, account := range accs {
-		// Drop wallets while they were in front of the next account
 		for len(ks.wallets) > 0 && ks.wallets[0].URL().Cmp(account.URL) < 0 {
 			events = append(events, accounts.WalletEvent{Wallet: ks.wallets[0], Kind: accounts.WalletDropped})
 			ks.wallets = ks.wallets[1:]
 		}
-		// If there are no more wallets or the account is before the next, wrap new wallet
 		if len(ks.wallets) == 0 || ks.wallets[0].URL().Cmp(account.URL) > 0 {
 			wallet := &keystoreWallet{account: account, keystore: ks}
 
@@ -123,35 +112,29 @@ func (ks *KeyStore) refreshWallets() {
 			wallets = append(wallets, wallet)
 			continue
 		}
-		// If the account is the same as the first wallet, keep it
 		if ks.wallets[0].Accounts()[0] == account {
 			wallets = append(wallets, ks.wallets[0])
 			ks.wallets = ks.wallets[1:]
 			continue
 		}
 	}
-	// Drop any leftover wallets and set the new batch
 	for _, wallet := range ks.wallets {
 		events = append(events, accounts.WalletEvent{Wallet: wallet, Kind: accounts.WalletDropped})
 	}
 	ks.wallets = wallets
 	ks.mu.Unlock()
 
-	// Fire all wallet events and return
 	for _, event := range events {
 		ks.updateFeed.Send(event)
 	}
 }
 
 func (ks *KeyStore) Subscribe(sink chan<- accounts.WalletEvent) event.Subscription {
-	// We need the mutex to reliably start/stop the update loop
 	ks.mu.Lock()
 	defer ks.mu.Unlock()
 
-	// Subscribe the caller and track the subscriber count
 	sub := ks.updateScope.Track(ks.updateFeed.Subscribe(sink))
 
-	// Subscribers require an active notification loop, start it
 	if !ks.updating {
 		ks.updating = true
 		go ks.updater()
@@ -161,15 +144,12 @@ func (ks *KeyStore) Subscribe(sink chan<- accounts.WalletEvent) event.Subscripti
 
 func (ks *KeyStore) updater() {
 	for {
-		// Wait for an account update or a refresh timeout
 		select {
 		case <-ks.changes:
 		case <-time.After(walletRefreshCycle):
 		}
-		// Run the wallet refresher
 		ks.refreshWallets()
 
-		// If all our subscribers left, stop the updater
 		ks.mu.Lock()
 		if ks.updateScope.Count() == 0 {
 			ks.updating = false
@@ -189,9 +169,6 @@ func (ks *KeyStore) Accounts() []accounts.Account {
 }
 
 func (ks *KeyStore) Delete(a accounts.Account, passphrase string) error {
-	// Decrypting the key isn't really necessary, but we do
-	// it anyway to check the password and zero out the key
-	// immediately afterwards.
 	a, key, err := ks.getDecryptedKey(a, passphrase)
 	if key != nil {
 		zeroKey(key.PrivateKey)
@@ -199,9 +176,6 @@ func (ks *KeyStore) Delete(a accounts.Account, passphrase string) error {
 	if err != nil {
 		return err
 	}
-	// The order is crucial here. The key is dropped from the
-	// cache after the file is gone so that a reload happening in
-	// between won't insert it into the cache again.
 	err = os.Remove(a.URL.Path)
 	if err == nil {
 		ks.cache.delete(a)
@@ -211,7 +185,6 @@ func (ks *KeyStore) Delete(a accounts.Account, passphrase string) error {
 }
 
 func (ks *KeyStore) SignHash(a accounts.Account, hash []byte) ([]byte, error) {
-	// Look up the key to sign with and abort if it cannot be found
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
 
@@ -219,12 +192,10 @@ func (ks *KeyStore) SignHash(a accounts.Account, hash []byte) ([]byte, error) {
 	if !found {
 		return nil, ErrLocked
 	}
-	// Sign the hash using plain ECDSA operations
 	return crypto.Sign(hash, unlockedKey.PrivateKey)
 }
 
 func (ks *KeyStore) SignTx(a accounts.Account, tx *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	// Look up the key to sign with and abort if it cannot be found
 	ks.mu.RLock()
 	defer ks.mu.RUnlock()
 
@@ -232,14 +203,12 @@ func (ks *KeyStore) SignTx(a accounts.Account, tx *types.Transaction, chainID *b
 	if !found {
 		return nil, ErrLocked
 	}
-	// Depending on the presence of the chain ID, sign with EIP155 or homestead
 	if chainID != nil {
 		return types.SignTx(tx, types.NewEIP155Signer(chainID), unlockedKey.PrivateKey)
 	}
 	return types.SignTx(tx, types.HomesteadSigner{}, unlockedKey.PrivateKey)
 }
 
-// [R || S || V] format where V is 0 or 1.
 func (ks *KeyStore) SignHashWithPassphrase(a accounts.Account, passphrase string, hash []byte) (signature []byte, err error) {
 	_, key, err := ks.getDecryptedKey(a, passphrase)
 	if err != nil {
@@ -256,7 +225,6 @@ func (ks *KeyStore) SignTxWithPassphrase(a accounts.Account, passphrase string, 
 	}
 	defer zeroKey(key.PrivateKey)
 
-	// Depending on the presence of the chain ID, sign with EIP155 or homestead
 	if chainID != nil {
 		return types.SignTx(tx, types.NewEIP155Signer(chainID), key.PrivateKey)
 	}
@@ -278,7 +246,6 @@ func (ks *KeyStore) Lock(addr common.Address) error {
 	return nil
 }
 
-//
 func (ks *KeyStore) TimedUnlock(a accounts.Account, passphrase string, timeout time.Duration) error {
 	a, key, err := ks.getDecryptedKey(a, passphrase)
 	if err != nil {
@@ -290,12 +257,9 @@ func (ks *KeyStore) TimedUnlock(a accounts.Account, passphrase string, timeout t
 	u, found := ks.unlocked[a.Address]
 	if found {
 		if u.abort == nil {
-			// The address was unlocked indefinitely, so unlocking
-			// it with a timeout would be confusing.
 			zeroKey(key.PrivateKey)
 			return nil
 		}
-		// Terminate the expire goroutine and replace it below.
 		close(u.abort)
 	}
 	if timeout > 0 {
@@ -330,13 +294,8 @@ func (ks *KeyStore) expire(addr common.Address, u *unlocked, timeout time.Durati
 	defer t.Stop()
 	select {
 	case <-u.abort:
-		// just quit
 	case <-t.C:
 		ks.mu.Lock()
-		// only drop if it's still the same key instance that dropLater
-		// was launched with. we can check that using pointer equality
-		// because the map stores a new pointer every time the key is
-		// unlocked.
 		if ks.unlocked[addr] == u {
 			zeroKey(u.PrivateKey)
 			delete(ks.unlocked, addr)
@@ -350,8 +309,6 @@ func (ks *KeyStore) NewAccount(passphrase string) (accounts.Account, error) {
 	if err != nil {
 		return accounts.Account{}, err
 	}
-	// Add the account to the cache immediately rather
-	// than waiting for file system notifications to pick it up.
 	ks.cache.add(account)
 	ks.refreshWallets()
 	return account, nil

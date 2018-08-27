@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/consensus"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/consensus"
+	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/params"
 	"github.com/hashicorp/golang-lru"
 )
@@ -32,12 +32,12 @@ type HeaderChain struct {
 	chainDb       candb.Database
 	genesisHeader *types.Header
 
-	currentHeader     atomic.Value // Current head of the header chain (may be above the block chain!)
-	currentHeaderHash common.Hash  // Hash of the current head of the header chain (prevent recomputing all the time)
+	currentHeader     atomic.Value
+	currentHeaderHash common.Hash
 
-	headerCache *lru.Cache // Cache for the most recent block headers
-	tdCache     *lru.Cache // Cache for the most recent block total difficulties
-	numberCache *lru.Cache // Cache for the most recent block numbers
+	headerCache *lru.Cache
+	tdCache     *lru.Cache
+	numberCache *lru.Cache
 
 	procInterrupt func() bool
 
@@ -50,7 +50,6 @@ func NewHeaderChain(chainDb candb.Database, config *params.ChainConfig, engine c
 	tdCache, _ := lru.New(tdCacheLimit)
 	numberCache, _ := lru.New(numberCacheLimit)
 
-	// Seed a fast but crypto originating random generator
 	seed, err := crand.Int(crand.Reader, big.NewInt(math.MaxInt64))
 	if err != nil {
 		return nil, err
@@ -95,14 +94,11 @@ func (hc *HeaderChain) GetBlockNumber(hash common.Hash) *uint64 {
 	return number
 }
 
-//
 func (hc *HeaderChain) WriteHeader(header *types.Header) (status WriteStatus, err error) {
-	// Cache some values to prevent constant recalculation
 	var (
 		hash   = header.Hash()
 		number = header.Number.Uint64()
 	)
-	// Calculate the total difficulty of the header
 	ptd := hc.GetTd(header.ParentHash, number-1)
 	if ptd == nil {
 		return NonStatTy, consensus.ErrUnknownAncestor
@@ -110,25 +106,22 @@ func (hc *HeaderChain) WriteHeader(header *types.Header) (status WriteStatus, er
 	localTd := hc.GetTd(hc.currentHeaderHash, hc.CurrentHeader().Number.Uint64())
 	externTd := new(big.Int).Add(header.Difficulty, ptd)
 
-	// Irrelevant of the canonical status, write the td and header to the database
 	if err := hc.WriteTd(hash, number, externTd); err != nil {
 		log4j.Crit("Failed to write header total difficulty", "err", err)
 	}
 	rawdb.WriteHeader(hc.chainDb, header)
 
-	// If the total difficulty is higher than our known, add it to the canonical chain
-	// Second clause in the if statement reduces the vulnerability to selfish mining.
-	// Please refer to http://www.cs.cornell.edu/~ie53/publications/btcProcFC.pdf
 	if externTd.Cmp(localTd) > 0 || (externTd.Cmp(localTd) == 0 && mrand.Float64() < 0.5) {
-		// Delete any canonical number assignments above the new head
+		batch := hc.chainDb.NewBatch()
 		for i := number + 1; ; i++ {
 			hash := rawdb.ReadCanonicalHash(hc.chainDb, i)
 			if hash == (common.Hash{}) {
 				break
 			}
-			rawdb.DeleteCanonicalHash(hc.chainDb, i)
+			rawdb.DeleteCanonicalHash(batch, i)
 		}
-		// Overwrite any stale canonical number assignments
+		batch.Write()
+
 		var (
 			headHash   = header.ParentHash
 			headNumber = header.Number.Uint64() - 1
@@ -141,7 +134,6 @@ func (hc *HeaderChain) WriteHeader(header *types.Header) (status WriteStatus, er
 			headNumber = headHeader.Number.Uint64() - 1
 			headHeader = hc.GetHeader(headHash, headNumber)
 		}
-		// Extend the canonical chain with the new header
 		rawdb.WriteCanonicalHash(hc.chainDb, hash, number)
 		rawdb.WriteHeadHeaderHash(hc.chainDb, hash)
 
@@ -162,10 +154,8 @@ func (hc *HeaderChain) WriteHeader(header *types.Header) (status WriteStatus, er
 type WhCallback func(*types.Header) error
 
 func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header, checkFreq int) (int, error) {
-	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
 		if chain[i].Number.Uint64() != chain[i-1].Number.Uint64()+1 || chain[i].ParentHash != chain[i-1].Hash() {
-			// Chain broke ancestry, log a messge (programming error) and skip insertion
 			log4j.Error("Non contiguous header insert", "number", chain[i].Number, "hash", chain[i].Hash(),
 				"parent", chain[i].ParentHash, "prevnumber", chain[i-1].Number, "prevhash", chain[i-1].Hash())
 
@@ -174,7 +164,6 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header, checkFreq int)
 		}
 	}
 
-	// Generate the list of seal verification requests, and start the parallel verifier
 	seals := make([]bool, len(chain))
 	for i := 0; i < len(seals)/checkFreq; i++ {
 		index := i*checkFreq + hc.rand.Intn(checkFreq)
@@ -183,23 +172,19 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header, checkFreq int)
 		}
 		seals[index] = true
 	}
-	seals[len(seals)-1] = true // Last should always be verified to avoid junk
+	seals[len(seals)-1] = true
 
 	abort, results := hc.engine.VerifyHeaders(hc, chain, seals)
 	defer close(abort)
 
-	// Iterate over the headers and ensure they all check out
 	for i, header := range chain {
-		// If the chain is terminating, stop processing blocks
 		if hc.procInterrupt() {
 			log4j.Debug("Premature abort during headers verification")
 			return 0, errors.New("aborted")
 		}
-		// If the header is a banned one, straight out abort
 		if BadHashes[header.Hash()] {
 			return i, ErrBlacklistedHash
 		}
-		// Otherwise wait for headers checks and ensure they pass
 		if err := <-results; err != nil {
 			return i, err
 		}
@@ -208,18 +193,13 @@ func (hc *HeaderChain) ValidateHeaderChain(chain []*types.Header, checkFreq int)
 	return 0, nil
 }
 
-//
 func (hc *HeaderChain) InsertHeaderChain(chain []*types.Header, writeHeader WhCallback, start time.Time) (int, error) {
-	// Collect some import statistics to report on
 	stats := struct{ processed, ignored int }{}
-	// All headers passed verification, import them into the database
 	for i, header := range chain {
-		// Short circuit insertion if shutting down
 		if hc.procInterrupt() {
 			log4j.Debug("Premature abort during headers import")
 			return i, errors.New("aborted")
 		}
-		// If the header's already known, skip it, otherwise store
 		if hc.HasHeader(header.Hash(), header.Number.Uint64()) {
 			stats.ignored++
 			continue
@@ -229,7 +209,6 @@ func (hc *HeaderChain) InsertHeaderChain(chain []*types.Header, writeHeader WhCa
 		}
 		stats.processed++
 	}
-	// Report some public statistics so the user has a clue what's going on
 	last := chain[len(chain)-1]
 	log4j.Info("Imported new block headers", "count", stats.processed, "elapsed", common.PrettyDuration(time.Since(start)),
 		"number", last.Number, "hash", last.Hash(), "ignored", stats.ignored)
@@ -238,12 +217,10 @@ func (hc *HeaderChain) InsertHeaderChain(chain []*types.Header, writeHeader WhCa
 }
 
 func (hc *HeaderChain) GetBlockHashesFromHash(hash common.Hash, max uint64) []common.Hash {
-	// Get the origin header from which to fetch
 	header := hc.GetHeaderByHash(hash)
 	if header == nil {
 		return nil
 	}
-	// Iterate the headers until enough is collected or the genesis reached
 	chain := make([]common.Hash, 0, max)
 	for i := uint64(0); i < max; i++ {
 		next := header.ParentHash
@@ -258,13 +235,11 @@ func (hc *HeaderChain) GetBlockHashesFromHash(hash common.Hash, max uint64) []co
 	return chain
 }
 
-//
 func (hc *HeaderChain) GetAncestor(hash common.Hash, number, ancestor uint64, maxNonCanonical *uint64) (common.Hash, uint64) {
 	if ancestor > number {
 		return common.Hash{}, 0
 	}
 	if ancestor == 1 {
-		// in this case it is cheaper to just read the header
 		if header := hc.GetHeader(hash, number); header != nil {
 			return header.ParentHash, number - 1
 		} else {
@@ -292,7 +267,6 @@ func (hc *HeaderChain) GetAncestor(hash common.Hash, number, ancestor uint64, ma
 }
 
 func (hc *HeaderChain) GetTd(hash common.Hash, number uint64) *big.Int {
-	// Short circuit if the td's already in the cache, retrieve otherwise
 	if cached, ok := hc.tdCache.Get(hash); ok {
 		return cached.(*big.Int)
 	}
@@ -300,7 +274,6 @@ func (hc *HeaderChain) GetTd(hash common.Hash, number uint64) *big.Int {
 	if td == nil {
 		return nil
 	}
-	// Cache the found body for next time and return
 	hc.tdCache.Add(hash, td)
 	return td
 }
@@ -320,7 +293,6 @@ func (hc *HeaderChain) WriteTd(hash common.Hash, number uint64, td *big.Int) err
 }
 
 func (hc *HeaderChain) GetHeader(hash common.Hash, number uint64) *types.Header {
-	// Short circuit if the header's already in the cache, retrieve otherwise
 	if header, ok := hc.headerCache.Get(hash); ok {
 		return header.(*types.Header)
 	}
@@ -328,7 +300,6 @@ func (hc *HeaderChain) GetHeader(hash common.Hash, number uint64) *types.Header 
 	if header == nil {
 		return nil
 	}
-	// Cache the found header for next time and return
 	hc.headerCache.Add(hash, header)
 	return header
 }
@@ -367,7 +338,7 @@ func (hc *HeaderChain) SetCurrentHeader(head *types.Header) {
 	hc.currentHeaderHash = head.Hash()
 }
 
-type DeleteCallback func(common.Hash, uint64)
+type DeleteCallback func(rawdb.DatabaseDeleter, common.Hash, uint64)
 
 func (hc *HeaderChain) SetHead(head uint64, delFn DeleteCallback) {
 	height := uint64(0)
@@ -375,23 +346,23 @@ func (hc *HeaderChain) SetHead(head uint64, delFn DeleteCallback) {
 	if hdr := hc.CurrentHeader(); hdr != nil {
 		height = hdr.Number.Uint64()
 	}
-
+	batch := hc.chainDb.NewBatch()
 	for hdr := hc.CurrentHeader(); hdr != nil && hdr.Number.Uint64() > head; hdr = hc.CurrentHeader() {
 		hash := hdr.Hash()
 		num := hdr.Number.Uint64()
 		if delFn != nil {
-			delFn(hash, num)
+			delFn(batch, hash, num)
 		}
-		rawdb.DeleteHeader(hc.chainDb, hash, num)
-		rawdb.DeleteTd(hc.chainDb, hash, num)
+		rawdb.DeleteHeader(batch, hash, num)
+		rawdb.DeleteTd(batch, hash, num)
 
 		hc.currentHeader.Store(hc.GetHeader(hdr.ParentHash, hdr.Number.Uint64()-1))
 	}
-	// Roll back the canonical chain numbering
 	for i := height; i > head; i-- {
-		rawdb.DeleteCanonicalHash(hc.chainDb, i)
+		rawdb.DeleteCanonicalHash(batch, i)
 	}
-	// Clear out any stale content from the caches
+	batch.Write()
+
 	hc.headerCache.Purge()
 	hc.tdCache.Purge()
 	hc.numberCache.Purge()

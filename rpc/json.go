@@ -10,7 +10,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 const (
@@ -58,13 +58,13 @@ type jsonNotification struct {
 }
 
 type jsonCodec struct {
-	closer sync.Once                 // close closed channel once
-	closed chan interface{}          // closed on Close
-	decMu  sync.Mutex                // guards the decoder
-	decode func(v interface{}) error // decoder to allow multiple transports
-	encMu  sync.Mutex                // guards the encoder
-	encode func(v interface{}) error // encoder to allow multiple transports
-	rw     io.ReadWriteCloser        // connection
+	closer sync.Once
+	closed chan interface{}
+	decMu  sync.Mutex
+	decode func(v interface{}) error
+	encMu  sync.Mutex
+	encode func(v interface{}) error
+	rw     io.ReadWriteCloser
 }
 
 func (err *jsonError) Error() string {
@@ -102,7 +102,6 @@ func NewJSONCodec(rwc io.ReadWriteCloser) ServerCodec {
 
 func isBatch(msg json.RawMessage) bool {
 	for _, c := range msg {
-		// skip insignificant whitespace (http://www.ietf.org/rfc/rfc4627.txt)
 		if c == 0x20 || c == 0x09 || c == 0x0a || c == 0x0d {
 			continue
 		}
@@ -149,11 +148,9 @@ func parseRequest(incomingMsg json.RawMessage) ([]rpcRequest, bool, Error) {
 		return nil, false, &invalidMessageError{err.Error()}
 	}
 
-	// subscribe are special, they will always use `subscribeMethod` as first param in the payload
 	if strings.HasSuffix(in.Method, subscribeMethodSuffix) {
 		reqs := []rpcRequest{{id: &in.Id, isPubSub: true}}
 		if len(in.Payload) > 0 {
-			// first param must be subscription name
 			var subscribeMethod [1]string
 			if err := json.Unmarshal(in.Payload, &subscribeMethod); err != nil {
 				log4j.Debug(fmt.Sprintf("Unable to parse subscription method: %v\n", err))
@@ -177,7 +174,6 @@ func parseRequest(incomingMsg json.RawMessage) ([]rpcRequest, bool, Error) {
 		return nil, false, &methodNotFoundError{in.Method, ""}
 	}
 
-	// regular RPC call
 	if len(in.Payload) == 0 {
 		return []rpcRequest{{service: elems[0], method: elems[1], id: &in.Id}}, false, nil
 	}
@@ -199,11 +195,9 @@ func parseBatchRequest(incomingMsg json.RawMessage) ([]rpcRequest, bool, Error) 
 
 		id := &in[i].Id
 
-		// subscribe are special, they will always use `subscriptionMethod` as first param in the payload
 		if strings.HasSuffix(r.Method, subscribeMethodSuffix) {
 			requests[i] = rpcRequest{id: id, isPubSub: true}
 			if len(r.Payload) > 0 {
-				// first param must be subscription name
 				var subscribeMethod [1]string
 				if err := json.Unmarshal(r.Payload, &subscribeMethod); err != nil {
 					log4j.Debug(fmt.Sprintf("Unable to parse subscription method: %v\n", err))
@@ -247,12 +241,10 @@ func (c *jsonCodec) ParseRequestArguments(argTypes []reflect.Type, params interf
 }
 
 func parsePositionalArguments(rawArgs json.RawMessage, types []reflect.Type) ([]reflect.Value, Error) {
-	// Read beginning of the args array.
 	dec := json.NewDecoder(bytes.NewReader(rawArgs))
 	if tok, _ := dec.Token(); tok != json.Delim('[') {
 		return nil, &invalidParamsError{"non-array args"}
 	}
-	// Read args.
 	args := make([]reflect.Value, 0, len(types))
 	for i := 0; dec.More(); i++ {
 		if i >= len(types) {
@@ -267,11 +259,9 @@ func parsePositionalArguments(rawArgs json.RawMessage, types []reflect.Type) ([]
 		}
 		args = append(args, argval.Elem())
 	}
-	// Read end of args array.
 	if _, err := dec.Token(); err != nil {
 		return nil, &invalidParamsError{err.Error()}
 	}
-	// Set any missing args to nil.
 	for i := len(args); i < len(types); i++ {
 		if types[i].Kind() != reflect.Ptr {
 			return nil, &invalidParamsError{fmt.Sprintf("missing value for required argument %d", i)}

@@ -15,9 +15,7 @@ var (
 )
 
 const (
-	// number of bits in a big.Word
 	wordBits = 32 << (uint64(^big.Word(0)) >> 63)
-	// number of bytes in a big.Word
 	wordBytes = wordBits / 8
 )
 
@@ -103,13 +101,11 @@ func PaddedBigBytes(bigint *big.Int, n int) []byte {
 
 func bigEndianByteAt(bigint *big.Int, n int) byte {
 	words := bigint.Bits()
-	// Check word-bucket the byte will reside in
 	i := n / wordBytes
 	if i >= len(words) {
 		return byte(0)
 	}
 	word := words[i]
-	// Offset of the byte
 	shift := 8 * uint(n%wordBytes)
 
 	return byte(word >> shift)
@@ -137,7 +133,6 @@ func U256(x *big.Int) *big.Int {
 	return x.And(x, tt256m1)
 }
 
-//
 func S256(x *big.Int) *big.Int {
 	if x.Cmp(tt255) < 0 {
 		return x
@@ -145,7 +140,6 @@ func S256(x *big.Int) *big.Int {
 	return new(big.Int).Sub(x, tt256)
 }
 
-//
 func Exp(base, exponent *big.Int) *big.Int {
 	result := big.NewInt(1)
 

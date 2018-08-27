@@ -1,4 +1,3 @@
-
 package candb
 
 import (
@@ -8,8 +7,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/metrics"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/metrics"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/filter"
@@ -19,35 +18,32 @@ import (
 )
 
 const (
-	writeDelayNThreshold       = 200
-	writeDelayThreshold        = 350 * time.Millisecond
-	writeDelayWarningThrottler = 1 * time.Minute
+	writePauseWarningThrottler = 1 * time.Minute
 )
 
 var OpenFileLimit = 64
 
 type LDBDatabase struct {
-	fn string      // filename for reporting
-	db *leveldb.DB // LevelDB instance
+	fn string
+	db *leveldb.DB
 
-	compTimeMeter    metrics.Meter // Meter for measuring the total time spent in database compaction
-	compReadMeter    metrics.Meter // Meter for measuring the data read during compaction
-	compWriteMeter   metrics.Meter // Meter for measuring the data written during compaction
-	writeDelayNMeter metrics.Meter // Meter for measuring the write delay number due to database compaction
-	writeDelayMeter  metrics.Meter // Meter for measuring the write delay duration due to database compaction
-	diskReadMeter    metrics.Meter // Meter for measuring the effective amount of data read
-	diskWriteMeter   metrics.Meter // Meter for measuring the effective amount of data written
+	compTimeMeter    metrics.Meter
+	compReadMeter    metrics.Meter
+	compWriteMeter   metrics.Meter
+	writeDelayNMeter metrics.Meter
+	writeDelayMeter  metrics.Meter
+	diskReadMeter    metrics.Meter
+	diskWriteMeter   metrics.Meter
 
-	quitLock sync.Mutex      // Mutex protecting the quit channel access
-	quitChan chan chan error // Quit channel to stop the metrics collection before closing the database
+	quitLock sync.Mutex
+	quitChan chan chan error
 
-	log log4j.Logger // Contextual logger tracking the database path
+	log log4j.Logger
 }
 
 func NewLDBDatabase(file string, cache int, handles int) (*LDBDatabase, error) {
 	logger := log4j.New("database", file)
 
-	// Ensure we have some minimal caching and file guarantees
 	if cache < 16 {
 		cache = 16
 	}
@@ -56,17 +52,15 @@ func NewLDBDatabase(file string, cache int, handles int) (*LDBDatabase, error) {
 	}
 	logger.Info("Allocated cache and file handles", "cache", cache, "handles", handles)
 
-	// Open the db and recover any potential corruptions
 	db, err := leveldb.OpenFile(file, &opt.Options{
 		OpenFilesCacheCapacity: handles,
 		BlockCacheCapacity:     cache / 2 * opt.MiB,
-		WriteBuffer:            cache / 4 * opt.MiB, // Two of these are used internally
+		WriteBuffer:            cache / 4 * opt.MiB,
 		Filter:                 filter.NewBloomFilter(10),
 	})
 	if _, corrupted := err.(*errors.ErrCorrupted); corrupted {
 		db, err = leveldb.RecoverFile(file, nil)
 	}
-	// (Re)check for errors and abort if opening of the db failed
 	if err != nil {
 		return nil, err
 	}
@@ -110,7 +104,6 @@ func (db *LDBDatabase) NewIteratorWithPrefix(prefix []byte) iterator.Iterator {
 }
 
 func (db *LDBDatabase) Close() {
-	// Stop the metrics collection to avoid internal database races
 	db.quitLock.Lock()
 	defer db.quitLock.Unlock()
 
@@ -136,18 +129,15 @@ func (db *LDBDatabase) LDB() *leveldb.DB {
 
 func (db *LDBDatabase) Meter(prefix string) {
 	if metrics.Enabled {
-		// Initialize all the metrics collector at the requested prefix
 		db.compTimeMeter = metrics.NewRegisteredMeter(prefix+"compact/time", nil)
 		db.compReadMeter = metrics.NewRegisteredMeter(prefix+"compact/input", nil)
 		db.compWriteMeter = metrics.NewRegisteredMeter(prefix+"compact/output", nil)
 		db.diskReadMeter = metrics.NewRegisteredMeter(prefix+"disk/read", nil)
 		db.diskWriteMeter = metrics.NewRegisteredMeter(prefix+"disk/write", nil)
 	}
-	// Initialize write delay metrics no matter we are in metric mode or not.
 	db.writeDelayMeter = metrics.NewRegisteredMeter(prefix+"compact/writedelay/duration", nil)
 	db.writeDelayNMeter = metrics.NewRegisteredMeter(prefix+"compact/writedelay/counter", nil)
 
-	// Create a quit channel for the periodic collector and run it
 	db.quitLock.Lock()
 	db.quitChan = make(chan chan error)
 	db.quitLock.Unlock()
@@ -155,24 +145,15 @@ func (db *LDBDatabase) Meter(prefix string) {
 	go db.meter(3 * time.Second)
 }
 
-//
-//   -------+------------+---------------+---------------+---------------+---------------
-//
-//
 func (db *LDBDatabase) meter(refresh time.Duration) {
-	// Create the counters to store current and previous compaction values
 	compactions := make([][]float64, 2)
 	for i := 0; i < 2; i++ {
 		compactions[i] = make([]float64, 3)
 	}
-	// Create storage for iostats.
 	var iostats [2]float64
 
-	// Create storage and warning log tracer for write delay.
 	var (
 		delaystats      [2]int64
-		lastWriteDelay  time.Time
-		lastWriteDelayN time.Time
 		lastWritePaused time.Time
 	)
 
@@ -181,16 +162,13 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 		merr error
 	)
 
-	// Iterate ad infinitum and collect the stats
 	for i := 1; errc == nil && merr == nil; i++ {
-		// Retrieve the database stats
 		stats, err := db.db.GetProperty("leveldb.stats")
 		if err != nil {
 			db.log.Error("Failed to read database stats", "err", err)
 			merr = err
 			continue
 		}
-		// Find the compaction table, skip the header
 		lines := strings.Split(stats, "\n")
 		for len(lines) > 0 && strings.TrimSpace(lines[0]) != "Compactions" {
 			lines = lines[1:]
@@ -202,7 +180,6 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 		}
 		lines = lines[3:]
 
-		// Iterate over all the table rows, and accumulate the entries
 		for j := 0; j < len(compactions[i%2]); j++ {
 			compactions[i%2][j] = 0
 		}
@@ -221,7 +198,6 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 				compactions[i%2][idx] += value
 			}
 		}
-		// Update all the requested meters
 		if db.compTimeMeter != nil {
 			db.compTimeMeter.Mark(int64((compactions[i%2][0] - compactions[(i-1)%2][0]) * 1000 * 1000 * 1000))
 		}
@@ -232,7 +208,6 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 			db.compWriteMeter.Mark(int64((compactions[i%2][2] - compactions[(i-1)%2][2]) * 1024 * 1024))
 		}
 
-		// Retrieve the write delay statistic
 		writedelay, err := db.db.GetProperty("leveldb.writedelay")
 		if err != nil {
 			db.log.Error("Failed to read database write delay statistic", "err", err)
@@ -258,39 +233,17 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 		}
 		if db.writeDelayNMeter != nil {
 			db.writeDelayNMeter.Mark(delayN - delaystats[0])
-			// If the write delay number been collected in the last minute exceeds the predefined threshold,
-			// print a warning log here.
-			// If a warning that db performance is laggy has been displayed,
-			// any subsequent warnings will be withhold for 1 minute to don't overwhelm the user.
-			if int(db.writeDelayNMeter.Rate1()) > writeDelayNThreshold &&
-				time.Now().After(lastWriteDelayN.Add(writeDelayWarningThrottler)) {
-				db.log.Warn("Write delay number exceeds the threshold (200 per second) in the last minute")
-				lastWriteDelayN = time.Now()
-			}
 		}
 		if db.writeDelayMeter != nil {
 			db.writeDelayMeter.Mark(duration.Nanoseconds() - delaystats[1])
-			// If the write delay duration been collected in the last minute exceeds the predefined threshold,
-			// print a warning log here.
-			// If a warning that db performance is laggy has been displayed,
-			// any subsequent warnings will be withhold for 1 minute to don't overwhelm the user.
-			if int64(db.writeDelayMeter.Rate1()) > writeDelayThreshold.Nanoseconds() &&
-				time.Now().After(lastWriteDelay.Add(writeDelayWarningThrottler)) {
-				db.log.Warn("Write delay duration exceeds the threshold (35% of the time) in the last minute")
-				lastWriteDelay = time.Now()
-			}
 		}
-		// If a warning that db is performing compaction has been displayed, any subsequent
-		// warnings will be withheld for one minute not to overwhelm the user.
 		if paused && delayN-delaystats[0] == 0 && duration.Nanoseconds()-delaystats[1] == 0 &&
-			time.Now().After(lastWritePaused.Add(writeDelayWarningThrottler)) {
+			time.Now().After(lastWritePaused.Add(writePauseWarningThrottler)) {
 			db.log.Warn("Database compacting, degraded performance")
 			lastWritePaused = time.Now()
 		}
-
 		delaystats[0], delaystats[1] = delayN, duration.Nanoseconds()
 
-		// Retrieve the database iostats.
 		ioStats, err := db.db.GetProperty("leveldb.iostats")
 		if err != nil {
 			db.log.Error("Failed to read database iostats", "err", err)
@@ -322,12 +275,9 @@ func (db *LDBDatabase) meter(refresh time.Duration) {
 		}
 		iostats[0], iostats[1] = nRead, nWrite
 
-		// Sleep a bit, then repeat the stats collection
 		select {
 		case errc = <-db.quitChan:
-			// Quit requesting, stop hammering the database
 		case <-time.After(refresh):
-			// Timeout, gather a new set of stats
 		}
 	}
 
@@ -350,6 +300,12 @@ type ldbBatch struct {
 func (b *ldbBatch) Put(key, value []byte) error {
 	b.b.Put(key, value)
 	b.size += len(value)
+	return nil
+}
+
+func (b *ldbBatch) Delete(key []byte) error {
+	b.b.Delete(key)
+	b.size += 1
 	return nil
 }
 
@@ -395,7 +351,6 @@ func (dt *table) Delete(key []byte) error {
 }
 
 func (dt *table) Close() {
-	// Do nothing; don't close the underlying DB.
 }
 
 type tableBatch struct {
@@ -413,6 +368,10 @@ func (dt *table) NewBatch() Batch {
 
 func (tb *tableBatch) Put(key, value []byte) error {
 	return tb.batch.Put(append([]byte(tb.prefix), key...), value)
+}
+
+func (tb *tableBatch) Delete(key []byte) error {
+	return tb.batch.Delete(append([]byte(tb.prefix), key...))
 }
 
 func (tb *tableBatch) Write() error {

@@ -12,7 +12,7 @@ import (
 
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/event"
+	"github.com/5uwifi/canchain/lib/event"
 )
 
 var testSigData = make([]byte, 32)
@@ -56,7 +56,7 @@ func TestSign(t *testing.T) {
 	dir, ks := tmpKeyStore(t, true)
 	defer os.RemoveAll(dir)
 
-	pass := "" // not used but required by API
+	pass := ""
 	a1, err := ks.NewAccount(pass)
 	if err != nil {
 		t.Fatal(err)
@@ -107,24 +107,20 @@ func TestTimedUnlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Signing without passphrase fails because account is locked
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != ErrLocked {
 		t.Fatal("Signing should've failed with ErrLocked before unlocking, got ", err)
 	}
 
-	// Signing with passphrase works
 	if err = ks.TimedUnlock(a1, pass, 100*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 
-	// Signing without passphrase works because account is temp unlocked
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != nil {
 		t.Fatal("Signing shouldn't return an error after unlocking, got ", err)
 	}
 
-	// Signing fails again after automatic locking
 	time.Sleep(250 * time.Millisecond)
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != ErrLocked {
@@ -142,29 +138,24 @@ func TestOverrideUnlock(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Unlock indefinitely.
 	if err = ks.TimedUnlock(a1, pass, 5*time.Minute); err != nil {
 		t.Fatal(err)
 	}
 
-	// Signing without passphrase works because account is temp unlocked
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != nil {
 		t.Fatal("Signing shouldn't return an error after unlocking, got ", err)
 	}
 
-	// reset unlock to a shorter period, invalidates the previous unlock
 	if err = ks.TimedUnlock(a1, pass, 100*time.Millisecond); err != nil {
 		t.Fatal(err)
 	}
 
-	// Signing without passphrase still works because account is temp unlocked
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != nil {
 		t.Fatal("Signing shouldn't return an error after unlocking, got ", err)
 	}
 
-	// Signing fails again after automatic locking
 	time.Sleep(250 * time.Millisecond)
 	_, err = ks.SignHash(accounts.Account{Address: a1.Address}, testSigData)
 	if err != ErrLocked {
@@ -172,12 +163,10 @@ func TestOverrideUnlock(t *testing.T) {
 	}
 }
 
-// This test should fail under -race if signing races the expiration goroutine.
 func TestSignRace(t *testing.T) {
 	dir, ks := tmpKeyStore(t, false)
 	defer os.RemoveAll(dir)
 
-	// Create a test account.
 	a1, err := ks.NewAccount("")
 	if err != nil {
 		t.Fatal("could not create the test account", err)
@@ -199,14 +188,10 @@ func TestSignRace(t *testing.T) {
 	t.Errorf("Account did not lock within the timeout")
 }
 
-// Tests that the wallet notifier loop starts and stops correctly based on the
-// addition and removal of wallet event subscriptions.
 func TestWalletNotifierLifecycle(t *testing.T) {
-	// Create a temporary kesytore to test with
 	dir, ks := tmpKeyStore(t, false)
 	defer os.RemoveAll(dir)
 
-	// Ensure that the notification updater is not running yet
 	time.Sleep(250 * time.Millisecond)
 	ks.mu.RLock()
 	updating := ks.updating
@@ -215,15 +200,12 @@ func TestWalletNotifierLifecycle(t *testing.T) {
 	if updating {
 		t.Errorf("wallet notifier running without subscribers")
 	}
-	// Subscribe to the wallet feed and ensure the updater boots up
 	updates := make(chan accounts.WalletEvent)
 
 	subs := make([]event.Subscription, 2)
 	for i := 0; i < len(subs); i++ {
-		// Create a new subscription
 		subs[i] = ks.Subscribe(updates)
 
-		// Ensure the notifier comes online
 		time.Sleep(250 * time.Millisecond)
 		ks.mu.RLock()
 		updating = ks.updating
@@ -233,12 +215,9 @@ func TestWalletNotifierLifecycle(t *testing.T) {
 			t.Errorf("sub %d: wallet notifier not running after subscription", i)
 		}
 	}
-	// Unsubscribe and ensure the updater terminates eventually
 	for i := 0; i < len(subs); i++ {
-		// Close an existing subscription
 		subs[i].Unsubscribe()
 
-		// Ensure the notifier shuts down at and only at the last close
 		for k := 0; k < int(walletRefreshCycle/(250*time.Millisecond))+2; k++ {
 			ks.mu.RLock()
 			updating = ks.updating
@@ -261,13 +240,10 @@ type walletEvent struct {
 	a accounts.Account
 }
 
-// Tests that wallet notifications and correctly fired when accounts are added
-// or deleted from the keystore.
 func TestWalletNotifications(t *testing.T) {
 	dir, ks := tmpKeyStore(t, false)
 	defer os.RemoveAll(dir)
 
-	// Subscribe to the wallet feed and collect events.
 	var (
 		events  []walletEvent
 		updates = make(chan accounts.WalletEvent)
@@ -286,14 +262,12 @@ func TestWalletNotifications(t *testing.T) {
 		}
 	}()
 
-	// Randomly add and remove accounts.
 	var (
 		live       = make(map[common.Address]accounts.Account)
 		wantEvents []walletEvent
 	)
 	for i := 0; i < 1024; i++ {
 		if create := len(live) == 0 || rand.Int()%4 > 0; create {
-			// Add a new account and ensure wallet notifications arrives
 			account, err := ks.NewAccount("")
 			if err != nil {
 				t.Fatalf("failed to create test account: %v", err)
@@ -301,7 +275,6 @@ func TestWalletNotifications(t *testing.T) {
 			live[account.Address] = account
 			wantEvents = append(wantEvents, walletEvent{accounts.WalletEvent{Kind: accounts.WalletArrived}, account})
 		} else {
-			// Delete a random account.
 			var account accounts.Account
 			for _, a := range live {
 				account = a
@@ -315,14 +288,12 @@ func TestWalletNotifications(t *testing.T) {
 		}
 	}
 
-	// Shut down the event collector and check events.
 	sub.Unsubscribe()
 	<-updates
 	checkAccounts(t, live, ks.Wallets())
 	checkEvents(t, wantEvents, events)
 }
 
-// checkAccounts checks that all known live accounts are present in the wallet list.
 func checkAccounts(t *testing.T, live map[common.Address]accounts.Account, wallets []accounts.Wallet) {
 	if len(live) != len(wallets) {
 		t.Errorf("wallet list doesn't match required accounts: have %d, want %d", len(wallets), len(live))
@@ -342,7 +313,6 @@ func checkAccounts(t *testing.T, live map[common.Address]accounts.Account, walle
 	}
 }
 
-// checkEvents checks that all events in 'want' are present in 'have'. Events may be present multiple times.
 func checkEvents(t *testing.T, want []walletEvent, have []walletEvent) {
 	for _, wantEv := range want {
 		nmatch := 0
@@ -359,7 +329,7 @@ func checkEvents(t *testing.T, want []walletEvent, have []walletEvent) {
 }
 
 func tmpKeyStore(t *testing.T, encrypted bool) (string, *KeyStore) {
-	d, err := ioutil.TempDir("", "can-keystore-test")
+	d, err := ioutil.TempDir("", "eth-keystore-test")
 	if err != nil {
 		t.Fatal(err)
 	}

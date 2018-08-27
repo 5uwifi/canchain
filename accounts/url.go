@@ -8,8 +8,8 @@ import (
 )
 
 type URL struct {
-	Scheme string // Protocol scheme to identify a capable account backend
-	Path   string // Path for the backend to identify a unique entity
+	Scheme string
+	Path   string
 }
 
 func parseURL(url string) (URL, error) {
@@ -43,12 +43,12 @@ func (u URL) MarshalJSON() ([]byte, error) {
 }
 
 func (u *URL) UnmarshalJSON(input []byte) error {
-	var textUrl string
-	err := json.Unmarshal(input, &textUrl)
+	var textURL string
+	err := json.Unmarshal(input, &textURL)
 	if err != nil {
 		return err
 	}
-	url, err := parseURL(textUrl)
+	url, err := parseURL(textURL)
 	if err != nil {
 		return err
 	}

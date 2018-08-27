@@ -7,13 +7,11 @@ import (
 	"testing"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/mattn/go-colorable"
 )
 
 func TestEncryption(t *testing.T) {
-	//	key := []byte("AES256Key-32Characters1234567890")
-	//	plaintext := []byte(value)
 	key := []byte("AES256Key-32Characters1234567890")
 	plaintext := []byte("exampleplaintext")
 

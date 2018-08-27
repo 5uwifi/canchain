@@ -1,13 +1,12 @@
-
 package rawdb
 
 import (
 	"encoding/json"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
-	"github.com/5uwifi/canchain/basis/rlp"
 )
 
 func ReadDatabaseVersion(db DatabaseReader) int {

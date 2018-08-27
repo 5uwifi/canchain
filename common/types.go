@@ -1,6 +1,7 @@
 package common
 
 import (
+	"database/sql/driver"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -10,12 +11,12 @@ import (
 	"strings"
 
 	"github.com/5uwifi/canchain/common/hexutil"
-	"github.com/5uwifi/canchain/basis/crypto/sha3"
+	"github.com/5uwifi/canchain/lib/crypto/sha3"
 )
 
 const (
 	HashLength    = 32
-	AddressLength = 26
+	AddressLength = 20
 )
 
 var (
@@ -81,6 +82,22 @@ func (h Hash) Generate(rand *rand.Rand, size int) reflect.Value {
 	return reflect.ValueOf(h)
 }
 
+func (h *Hash) Scan(src interface{}) error {
+	srcB, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("can't scan %T into Hash", src)
+	}
+	if len(srcB) != HashLength {
+		return fmt.Errorf("can't scan []byte of len %d into Hash, want %d", len(srcB), HashLength)
+	}
+	copy(h[:], srcB)
+	return nil
+}
+
+func (h Hash) Value() (driver.Value, error) {
+	return h[:], nil
+}
+
 type UnprefixedHash Hash
 
 func (h *UnprefixedHash) UnmarshalText(input []byte) error {
@@ -90,8 +107,6 @@ func (h *UnprefixedHash) UnmarshalText(input []byte) error {
 func (h UnprefixedHash) MarshalText() ([]byte, error) {
 	return []byte(hex.EncodeToString(h[:])), nil
 }
-
-/////////// Address
 
 type Address [AddressLength]byte
 
@@ -166,6 +181,22 @@ func (a *Address) UnmarshalJSON(input []byte) error {
 	return hexutil.UnmarshalFixedJSON(addressT, input, a[:])
 }
 
+func (a *Address) Scan(src interface{}) error {
+	srcB, ok := src.([]byte)
+	if !ok {
+		return fmt.Errorf("can't scan %T into Address", src)
+	}
+	if len(srcB) != AddressLength {
+		return fmt.Errorf("can't scan []byte of len %d into Address, want %d", len(srcB), AddressLength)
+	}
+	copy(a[:], srcB)
+	return nil
+}
+
+func (a Address) Value() (driver.Value, error) {
+	return a[:], nil
+}
+
 type UnprefixedAddress Address
 
 func (a *UnprefixedAddress) UnmarshalText(input []byte) error {
@@ -219,7 +250,6 @@ func (ma *MixedcaseAddress) String() string {
 }
 
 func (ma *MixedcaseAddress) ValidChecksum() bool {
-	fmt.Println(ma.original, ma.addr.Hex())
 	return ma.original == ma.addr.Hex()
 }
 

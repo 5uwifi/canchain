@@ -12,17 +12,16 @@ import (
 
 const testSectionSize = 4096
 
-// Tests that wildcard filter rules (nil) can be specified and are handled well.
 func TestMatcherWildcards(t *testing.T) {
 	matcher := NewMatcher(testSectionSize, [][][]byte{
-		{common.Address{}.Bytes(), common.Address{0x01}.Bytes()}, // Default address is not a wildcard
-		{common.Hash{}.Bytes(), common.Hash{0x01}.Bytes()},       // Default hash is not a wildcard
-		{common.Hash{0x01}.Bytes()},                              // Plain rule, sanity check
-		{common.Hash{0x01}.Bytes(), nil},                         // Wildcard suffix, drop rule
-		{nil, common.Hash{0x01}.Bytes()},                         // Wildcard prefix, drop rule
-		{nil, nil},                                               // Wildcard combo, drop rule
-		{},                                                       // Inited wildcard rule, drop rule
-		nil,                                                      // Proper wildcard rule, drop rule
+		{common.Address{}.Bytes(), common.Address{0x01}.Bytes()},
+		{common.Hash{}.Bytes(), common.Hash{0x01}.Bytes()},
+		{common.Hash{0x01}.Bytes()},
+		{common.Hash{0x01}.Bytes(), nil},
+		{nil, common.Hash{0x01}.Bytes()},
+		{nil, nil},
+		{},
+		nil,
 	})
 	if len(matcher.filters) != 3 {
 		t.Fatalf("filter system size mismatch: have %d, want %d", len(matcher.filters), 3)
@@ -38,22 +37,18 @@ func TestMatcherWildcards(t *testing.T) {
 	}
 }
 
-// Tests the matcher pipeline on a single continuous workflow without interrupts.
 func TestMatcherContinuous(t *testing.T) {
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{10, 20, 30}}}, 0, 100000, false, 75)
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{32, 3125, 100}}, {{40, 50, 10}}}, 0, 100000, false, 81)
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{4, 8, 11}, {7, 8, 17}}, {{9, 9, 12}, {15, 20, 13}}, {{18, 15, 15}, {12, 10, 4}}}, 0, 10000, false, 36)
 }
 
-// Tests the matcher pipeline on a constantly interrupted and resumed work pattern
-// with the aim of ensuring data items are requested only once.
 func TestMatcherIntermittent(t *testing.T) {
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{10, 20, 30}}}, 0, 100000, true, 75)
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{32, 3125, 100}}, {{40, 50, 10}}}, 0, 100000, true, 81)
 	testMatcherDiffBatches(t, [][]bloomIndexes{{{4, 8, 11}, {7, 8, 17}}, {{9, 9, 12}, {15, 20, 13}}, {{18, 15, 15}, {12, 10, 4}}}, 0, 10000, true, 36)
 }
 
-// Tests the matcher pipeline on random input to hopefully catch anomalies.
 func TestMatcherRandom(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		testMatcherBothModes(t, makeRandomIndexes([]int{1}, 50), 0, 10000, 0)
@@ -64,29 +59,16 @@ func TestMatcherRandom(t *testing.T) {
 	}
 }
 
-// Tests that the matcher can properly find matches if the starting block is
-// shifter from a multiple of 8. This is needed to cover an optimisation with
-// bitset matching https://github.com/5uwifi/canchain/issues/15309.
 func TestMatcherShifted(t *testing.T) {
-	// Block 0 always matches in the tests, skip ahead of first 8 blocks with the
-	// start to get a potential zero byte in the matcher bitset.
 
-	// To keep the second bitset byte zero, the filter must only match for the first
-	// time in block 16, so doing an all-16 bit filter should suffice.
 
-	// To keep the starting block non divisible by 8, block number 9 is the first
-	// that would introduce a shift and not match block 0.
 	testMatcherBothModes(t, [][]bloomIndexes{{{16, 16, 16}}}, 9, 64, 0)
 }
 
-// Tests that matching on everything doesn't crash (special case internally).
 func TestWildcardMatcher(t *testing.T) {
 	testMatcherBothModes(t, nil, 0, 10000, 0)
 }
 
-// makeRandomIndexes generates a random filter system, composed on multiple filter
-// criteria, each having one bloom list component for the address and arbitrarily
-// many topic bloom list components.
 func makeRandomIndexes(lengths []int, max int) [][]bloomIndexes {
 	res := make([][]bloomIndexes, len(lengths))
 	for i, topics := range lengths {
@@ -100,9 +82,6 @@ func makeRandomIndexes(lengths []int, max int) [][]bloomIndexes {
 	return res
 }
 
-// testMatcherDiffBatches runs the given matches test in single-delivery and also
-// in batches delivery mode, verifying that all kinds of deliveries are handled
-// correctly withn.
 func testMatcherDiffBatches(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, intermittent bool, retrievals uint32) {
 	singleton := testMatcher(t, filter, start, blocks, intermittent, retrievals, 1)
 	batched := testMatcher(t, filter, start, blocks, intermittent, retrievals, 16)
@@ -112,8 +91,6 @@ func testMatcherDiffBatches(t *testing.T, filter [][]bloomIndexes, start, blocks
 	}
 }
 
-// testMatcherBothModes runs the given matcher test in both continuous as well as
-// in intermittent mode, verifying that the request counts match each other.
 func testMatcherBothModes(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, retrievals uint32) {
 	continuous := testMatcher(t, filter, start, blocks, false, retrievals, 16)
 	intermittent := testMatcher(t, filter, start, blocks, true, retrievals, 16)
@@ -123,10 +100,7 @@ func testMatcherBothModes(t *testing.T, filter [][]bloomIndexes, start, blocks u
 	}
 }
 
-// testMatcher is a generic tester to run the given matcher test and return the
-// number of requests made for cross validation between different modes.
 func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, intermittent bool, retrievals uint32, maxReqCount int) uint32 {
-	// Create a new matcher an simulate our explicit random bitsets
 	matcher := NewMatcher(testSectionSize, nil)
 	matcher.filters = filter
 
@@ -137,10 +111,8 @@ func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, in
 			}
 		}
 	}
-	// Track the number of retrieval requests made
 	var requested uint32
 
-	// Start the matching session for the filter and the retriver goroutines
 	quit := make(chan struct{})
 	matches := make(chan uint64, 16)
 
@@ -150,7 +122,6 @@ func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, in
 	}
 	startRetrievers(session, quit, &requested, maxReqCount)
 
-	// Iterate over all the blocks and verify that the pipeline produces the correct matches
 	for i := start; i < blocks; i++ {
 		if expMatch3(filter, i) {
 			match, ok := <-matches
@@ -161,7 +132,6 @@ func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, in
 			if match != i {
 				t.Errorf("filter = %v  blocks = %v  intermittent = %v: expected #%v, got #%v", filter, blocks, intermittent, i, match)
 			}
-			// If we're testing intermittent mode, abort and restart the pipeline
 			if intermittent {
 				session.Close()
 				close(quit)
@@ -177,12 +147,10 @@ func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, in
 			}
 		}
 	}
-	// Ensure the result channel is torn down after the last block
 	match, ok := <-matches
 	if ok {
 		t.Errorf("filter = %v  blocks = %v  intermittent = %v: expected closed channel, got #%v", filter, blocks, intermittent, match)
 	}
-	// Clean up the session and ensure we match the expected retrieval count
 	session.Close()
 	close(quit)
 
@@ -192,19 +160,14 @@ func testMatcher(t *testing.T, filter [][]bloomIndexes, start, blocks uint64, in
 	return requested
 }
 
-// startRetrievers starts a batch of goroutines listening for section requests
-// and serving them.
 func startRetrievers(session *MatcherSession, quit chan struct{}, retrievals *uint32, batch int) {
 	requests := make(chan chan *Retrieval)
 
 	for i := 0; i < 10; i++ {
-		// Start a multiplexer to test multiple threaded execution
 		go session.Multiplex(batch, 100*time.Microsecond, requests)
 
-		// Start a services to match the above multiplexer
 		go func() {
 			for {
-				// Wait for a service request or a shutdown
 				select {
 				case <-quit:
 					return
@@ -214,7 +177,7 @@ func startRetrievers(session *MatcherSession, quit chan struct{}, retrievals *ui
 
 					task.Bitsets = make([][]byte, len(task.Sections))
 					for i, section := range task.Sections {
-						if rand.Int()%4 != 0 { // Handle occasional missing deliveries
+						if rand.Int()%4 != 0 {
 							task.Bitsets[i] = generateBitset(task.Bit, section)
 							atomic.AddUint32(retrievals, 1)
 						}
@@ -226,8 +189,6 @@ func startRetrievers(session *MatcherSession, quit chan struct{}, retrievals *ui
 	}
 }
 
-// generateBitset generates the rotated bitset for the given bloom bit and section
-// numbers.
 func generateBitset(bit uint, section uint64) []byte {
 	bitset := make([]byte, testSectionSize/8)
 	for i := 0; i < len(bitset); i++ {

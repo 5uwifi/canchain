@@ -1,4 +1,3 @@
-
 // +build darwin dragonfly freebsd linux nacl netbsd openbsd solaris
 
 package rpc
@@ -11,7 +10,6 @@ import (
 )
 
 func ipcListen(endpoint string) (net.Listener, error) {
-	// Ensure the IPC path exists and remove any previous leftover
 	if err := os.MkdirAll(filepath.Dir(endpoint), 0751); err != nil {
 		return nil, err
 	}

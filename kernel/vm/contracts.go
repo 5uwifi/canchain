@@ -7,15 +7,15 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/crypto/bn256"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/crypto/bn256"
 	"github.com/5uwifi/canchain/params"
 	"golang.org/x/crypto/ripemd160"
 )
 
 type PrecompiledContract interface {
-	RequiredGas(input []byte) uint64  // RequiredPrice calculates the contract gas use
-	Run(input []byte) ([]byte, error) // Run runs the precompiled contract
+	RequiredGas(input []byte) uint64
+	Run(input []byte) ([]byte, error)
 }
 
 var PrecompiledContractsHomestead = map[common.Address]PrecompiledContract{
@@ -54,31 +54,24 @@ func (c *ecrecover) Run(input []byte) ([]byte, error) {
 	const ecRecoverInputLength = 128
 
 	input = common.RightPadBytes(input, ecRecoverInputLength)
-	// "input" is (hash, v, r, s), each 32 bytes
-	// but for ecrecover we want (r, s, v)
 
 	r := new(big.Int).SetBytes(input[64:96])
 	s := new(big.Int).SetBytes(input[96:128])
 	v := input[63] - 27
 
-	// tighter sig s values input homestead only apply to tx sigs
 	if !allZero(input[32:63]) || !crypto.ValidateSignatureValues(v, r, s, false) {
 		return nil, nil
 	}
-	// v needs to be at the end for libsecp256k1
 	pubKey, err := crypto.Ecrecover(input[:32], append(input[64:128], v))
-	// make sure the public key is a valid one
 	if err != nil {
 		return nil, nil
 	}
 
-	// the first byte of pubkey is bitcoin heritage
 	return common.LeftPadBytes(crypto.Keccak256(pubKey[1:])[12:], 32), nil
 }
 
 type sha256hash struct{}
 
-//
 func (c *sha256hash) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.Sha256PerWordGas + params.Sha256BaseGas
 }
@@ -89,7 +82,6 @@ func (c *sha256hash) Run(input []byte) ([]byte, error) {
 
 type ripemd160hash struct{}
 
-//
 func (c *ripemd160hash) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.Ripemd160PerWordGas + params.Ripemd160BaseGas
 }
@@ -101,7 +93,6 @@ func (c *ripemd160hash) Run(input []byte) ([]byte, error) {
 
 type dataCopy struct{}
 
-//
 func (c *dataCopy) RequiredGas(input []byte) uint64 {
 	return uint64(len(input)+31)/32*params.IdentityPerWordGas + params.IdentityBaseGas
 }
@@ -136,7 +127,6 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	} else {
 		input = input[:0]
 	}
-	// Retrieve the head 32 bytes of exp for the adjusted exponent length
 	var expHead *big.Int
 	if big.NewInt(int64(len(input))).Cmp(baseLen) <= 0 {
 		expHead = new(big.Int)
@@ -147,7 +137,6 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 			expHead = new(big.Int).SetBytes(getData(input, baseLen.Uint64(), expLen.Uint64()))
 		}
 	}
-	// Calculate the adjusted exponent length
 	var msb int
 	if bitlen := expHead.BitLen(); bitlen > 0 {
 		msb = bitlen - 1
@@ -159,7 +148,6 @@ func (c *bigModExp) RequiredGas(input []byte) uint64 {
 	}
 	adjExpLen.Add(adjExpLen, big.NewInt(int64(msb)))
 
-	// Calculate the gas cost of the operation
 	gas := new(big.Int).Set(math.BigMax(modLen, baseLen))
 	switch {
 	case gas.Cmp(big64) <= 0:
@@ -195,18 +183,15 @@ func (c *bigModExp) Run(input []byte) ([]byte, error) {
 	} else {
 		input = input[:0]
 	}
-	// Handle a special case when both the base and mod length is zero
 	if baseLen == 0 && modLen == 0 {
 		return []byte{}, nil
 	}
-	// Retrieve the operands and execute the exponentiation
 	var (
 		base = new(big.Int).SetBytes(getData(input, 0, baseLen))
 		exp  = new(big.Int).SetBytes(getData(input, baseLen, expLen))
 		mod  = new(big.Int).SetBytes(getData(input, baseLen+expLen, modLen))
 	)
 	if mod.BitLen() == 0 {
-		// Modulo 0 is undefined, return zero
 		return common.LeftPadBytes([]byte{}, int(modLen)), nil
 	}
 	return common.LeftPadBytes(base.Exp(base, exp, mod).Bytes(), int(modLen)), nil
@@ -265,13 +250,10 @@ func (c *bn256ScalarMul) Run(input []byte) ([]byte, error) {
 }
 
 var (
-	// true32Byte is returned if the bn256 pairing check succeeds.
 	true32Byte = []byte{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}
 
-	// false32Byte is returned if the bn256 pairing check fails.
 	false32Byte = make([]byte, 32)
 
-	// errBadPairingInput is returned if the bn256 pairing input is invalid.
 	errBadPairingInput = errors.New("bad elliptic curve pairing size")
 )
 
@@ -282,11 +264,9 @@ func (c *bn256Pairing) RequiredGas(input []byte) uint64 {
 }
 
 func (c *bn256Pairing) Run(input []byte) ([]byte, error) {
-	// Handle some corner cases cheaply
 	if len(input)%192 > 0 {
 		return nil, errBadPairingInput
 	}
-	// Convert the input into a set of coordinates
 	var (
 		cs []*bn256.G1
 		ts []*bn256.G2
@@ -303,7 +283,6 @@ func (c *bn256Pairing) Run(input []byte) ([]byte, error) {
 		cs = append(cs, c)
 		ts = append(ts, t)
 	}
-	// Execute the pairing checks and return the results
 	if bn256.PairingCheck(cs, ts) {
 		return true32Byte, nil
 	}

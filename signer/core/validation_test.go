@@ -1,14 +1,15 @@
 package core
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
-	"fmt"
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 )
 
+func hexAddr(a string) common.Address { return common.BytesToAddress(common.FromHex(a)) }
 func mixAddr(a string) (*common.MixedcaseAddress, error) {
 	return common.NewMixedcaseAddressFromString(a)
 }
@@ -59,37 +60,27 @@ type txtestcase struct {
 
 func TestValidator(t *testing.T) {
 	var (
-		// use empty db, there are other tests for the abi-specific stuff
 		db, _ = NewEmptyAbiDB()
 		v     = NewValidator(db)
 	)
 	testcases := []txtestcase{
-		// Invalid to checksum
-		{from: "000000000000000000000000000000000000000000000000dead", to: "000000000000000000000000000000000000000000000000dead",
+		{from: "000000000000000000000000000000000000dead", to: "000000000000000000000000000000000000dead",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", numMessages: 1},
-		// valid 0x000000000000000000000000000000000000000000000000dEaD
-		{from: "000000000000000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000000000000000dEaD",
+		{from: "000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000dEaD",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", numMessages: 0},
-		// conflicting input and data
-		{from: "000000000000000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000000000000000dEaD",
+		{from: "000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000dEaD",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", d: "0x01", i: "0x02", expectErr: true},
-		// Data can't be parsed
-		{from: "000000000000000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000000000000000dEaD",
+		{from: "000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000dEaD",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", d: "0x0102", numMessages: 1},
-		// Data (on Input) can't be parsed
-		{from: "000000000000000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000000000000000dEaD",
+		{from: "000000000000000000000000000000000000dead", to: "0x000000000000000000000000000000000000dEaD",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", i: "0x0102", numMessages: 1},
-		// Send to 0
-		{from: "000000000000000000000000000000000000000000000000dead", to: "0x0000000000000000000000000000000000000000000000000000",
+		{from: "000000000000000000000000000000000000dead", to: "0x0000000000000000000000000000000000000000",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", numMessages: 1},
-		// Create empty contract (no value)
-		{from: "000000000000000000000000000000000000000000000000dead", to: "",
+		{from: "000000000000000000000000000000000000dead", to: "",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x00", numMessages: 1},
-		// Create empty contract (with value)
-		{from: "000000000000000000000000000000000000000000000000dead", to: "",
+		{from: "000000000000000000000000000000000000dead", to: "",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", expectErr: true},
-		// Small payload for create
-		{from: "000000000000000000000000000000000000000000000000dead", to: "",
+		{from: "000000000000000000000000000000000000dead", to: "",
 			n: "0x01", g: "0x20", gp: "0x40", value: "0x01", d: "0x01", numMessages: 1},
 	}
 	for i, test := range testcases {
@@ -111,7 +102,6 @@ func TestValidator(t *testing.T) {
 				}
 				t.Errorf("Test %d, expected %d messages, got %d", i, test.numMessages, got)
 			} else {
-				//Debug printout, remove later
 				for _, msg := range msgs.Messages {
 					fmt.Printf("* [%d] %s: %s\n", i, msg.Typ, msg.Message)
 				}

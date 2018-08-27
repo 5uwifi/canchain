@@ -64,7 +64,6 @@ func readFixedBytes(t Type, word []byte) (interface{}, error) {
 	if t.T != FixedBytesTy {
 		return nil, fmt.Errorf("abi: invalid type in call to make fixed byte array")
 	}
-	// convert
 	array := reflect.New(t.Type).Elem()
 
 	reflect.Copy(array, reflect.ValueOf(word[0:t.Size]))
@@ -73,9 +72,7 @@ func readFixedBytes(t Type, word []byte) (interface{}, error) {
 }
 
 func getFullElemSize(elem *Type) int {
-	//all other should be counted as 32 (slices have pointers to respective elements)
 	size := 32
-	//arrays wrap it, each element being the same size
 	for elem.T == ArrayTy {
 		size *= elem.Size
 		elem = elem.Elem
@@ -91,21 +88,16 @@ func forEachUnpack(t Type, output []byte, start, size int) (interface{}, error) 
 		return nil, fmt.Errorf("abi: cannot marshal in to go array: offset %d would go over slice boundary (len=%d)", len(output), start+32*size)
 	}
 
-	// this value will become our slice or our array, depending on the type
 	var refSlice reflect.Value
 
 	if t.T == SliceTy {
-		// declare our slice
 		refSlice = reflect.MakeSlice(t.Type, size, size)
 	} else if t.T == ArrayTy {
-		// declare our array
 		refSlice = reflect.New(t.Type).Elem()
 	} else {
 		return nil, fmt.Errorf("abi: invalid type in array/slice unpacking stage")
 	}
 
-	// Arrays have packed elements, resulting in longer unpack steps.
-	// Slices have just 32 bytes per element (pointing to the contents).
 	elemSize := 32
 	if t.T == ArrayTy {
 		elemSize = getFullElemSize(t.Elem)
@@ -118,11 +110,9 @@ func forEachUnpack(t Type, output []byte, start, size int) (interface{}, error) 
 			return nil, err
 		}
 
-		// append the item to our reflect slice
 		refSlice.Index(j).Set(reflect.ValueOf(inter))
 	}
 
-	// return the interface
 	return refSlice.Interface(), nil
 }
 
@@ -137,7 +127,6 @@ func toGoType(index int, t Type, output []byte) (interface{}, error) {
 		err          error
 	)
 
-	// if we require a length prefix, find the beginning word and size returned.
 	if t.requiresLengthPrefix() {
 		begin, end, err = lengthPrefixPointsTo(index, output)
 		if err != nil {
@@ -152,7 +141,7 @@ func toGoType(index int, t Type, output []byte) (interface{}, error) {
 		return forEachUnpack(t, output, begin, end)
 	case ArrayTy:
 		return forEachUnpack(t, output, index, t.Size)
-	case StringTy: // variable arrays are written at the end of the return bytes
+	case StringTy:
 		return string(output[begin : begin+end]), nil
 	case IntTy, UintTy:
 		return readInteger(t.Kind, returnOutput), nil

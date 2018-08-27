@@ -5,24 +5,24 @@ import (
 	"fmt"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/rlp"
-	"github.com/5uwifi/canchain/basis/trie"
+	"github.com/5uwifi/canchain/lib/rlp"
+	"github.com/5uwifi/canchain/lib/trie"
 )
 
 type NodeIterator struct {
-	state *StateDB // State being iterated
+	state *StateDB
 
-	stateIt trie.NodeIterator // Primary iterator for the global state trie
-	dataIt  trie.NodeIterator // Secondary iterator for the data trie of a contract
+	stateIt trie.NodeIterator
+	dataIt  trie.NodeIterator
 
-	accountHash common.Hash // Hash of the node containing the account
-	codeHash    common.Hash // Hash of the contract source code
-	code        []byte      // Source code associated with a contract
+	accountHash common.Hash
+	codeHash    common.Hash
+	code        []byte
 
-	Hash   common.Hash // Hash of the current entry being iterated (nil if not standalone)
-	Parent common.Hash // Hash of the first full ancestor node (nil if current is the root)
+	Hash   common.Hash
+	Parent common.Hash
 
-	Error error // Failure set in case of an internal error in the iterator
+	Error error
 }
 
 func NewNodeIterator(state *StateDB) *NodeIterator {
@@ -32,11 +32,9 @@ func NewNodeIterator(state *StateDB) *NodeIterator {
 }
 
 func (it *NodeIterator) Next() bool {
-	// If the iterator failed previously, don't do anything
 	if it.Error != nil {
 		return false
 	}
-	// Otherwise step forward with the iterator and report any errors
 	if err := it.step(); err != nil {
 		it.Error = err
 		return false
@@ -45,15 +43,12 @@ func (it *NodeIterator) Next() bool {
 }
 
 func (it *NodeIterator) step() error {
-	// Abort if we reached the end of the iteration
 	if it.state == nil {
 		return nil
 	}
-	// Initialize the iterator if we've just started
 	if it.stateIt == nil {
 		it.stateIt = it.state.trie.NodeIterator(nil)
 	}
-	// If we had data nodes previously, we surely have at least state nodes
 	if it.dataIt != nil {
 		if cont := it.dataIt.Next(true); !cont {
 			if it.dataIt.Error() != nil {
@@ -63,12 +58,10 @@ func (it *NodeIterator) step() error {
 		}
 		return nil
 	}
-	// If we had source code previously, discard that
 	if it.code != nil {
 		it.code = nil
 		return nil
 	}
-	// Step to the next state trie node, terminating if we're out of nodes
 	if cont := it.stateIt.Next(true); !cont {
 		if it.stateIt.Error() != nil {
 			return it.stateIt.Error()
@@ -76,11 +69,9 @@ func (it *NodeIterator) step() error {
 		it.state, it.stateIt = nil, nil
 		return nil
 	}
-	// If the state trie node is an internal entry, leave as is
 	if !it.stateIt.Leaf() {
 		return nil
 	}
-	// Otherwise we've reached an account node, initiate data iteration
 	var account Account
 	if err := rlp.Decode(bytes.NewReader(it.stateIt.LeafBlob()), &account); err != nil {
 		return err
@@ -106,14 +97,11 @@ func (it *NodeIterator) step() error {
 }
 
 func (it *NodeIterator) retrieve() bool {
-	// Clear out any previously set values
 	it.Hash = common.Hash{}
 
-	// If the iteration's done, return no available data
 	if it.state == nil {
 		return false
 	}
-	// Otherwise retrieve the current entry
 	switch {
 	case it.dataIt != nil:
 		it.Hash, it.Parent = it.dataIt.Hash(), it.dataIt.Parent()

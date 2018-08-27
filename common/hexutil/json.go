@@ -65,7 +65,6 @@ func UnmarshalFixedText(typname string, input, out []byte) error {
 	if len(raw)/2 != len(out) {
 		return fmt.Errorf("hex string has length %d, want %d for %s", len(raw), len(out)*2, typname)
 	}
-	// Pre-verify syntax before modifying out.
 	for _, b := range raw {
 		if decodeNibble(b) == badNibble {
 			return ErrSyntax
@@ -83,7 +82,6 @@ func UnmarshalFixedUnprefixedText(typname string, input, out []byte) error {
 	if len(raw)/2 != len(out) {
 		return fmt.Errorf("hex string has length %d, want %d for %s", len(raw), len(out)*2, typname)
 	}
-	// Pre-verify syntax before modifying out.
 	for _, b := range raw {
 		if decodeNibble(b) == badNibble {
 			return ErrSyntax
@@ -93,7 +91,6 @@ func UnmarshalFixedUnprefixedText(typname string, input, out []byte) error {
 	return nil
 }
 
-//
 type Big big.Int
 
 func (b Big) MarshalText() ([]byte, error) {
@@ -226,7 +223,7 @@ func bytesHave0xPrefix(input []byte) bool {
 
 func checkText(input []byte, wantPrefix bool) ([]byte, error) {
 	if len(input) == 0 {
-		return nil, nil // empty strings are allowed
+		return nil, nil
 	}
 	if bytesHave0xPrefix(input) {
 		input = input[2:]
@@ -241,7 +238,7 @@ func checkText(input []byte, wantPrefix bool) ([]byte, error) {
 
 func checkNumberText(input []byte) (raw []byte, err error) {
 	if len(input) == 0 {
-		return nil, nil // empty strings are allowed
+		return nil, nil
 	}
 	if !bytesHave0xPrefix(input) {
 		return nil, ErrMissingPrefix

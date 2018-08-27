@@ -1,7 +1,9 @@
-
 package vm
 
-import "math/big"
+import (
+	"math/big"
+	"sync"
+)
 
 var checkVal = big.NewInt(-42)
 
@@ -34,11 +36,41 @@ func (p *intPool) put(is ...*big.Int) {
 		return
 	}
 	for _, i := range is {
-		// verifyPool is a build flag. Pool verification makes sure the integrity
-		// of the integer pool by comparing values to a default value.
 		if verifyPool {
 			i.Set(checkVal)
 		}
 		p.pool.push(i)
+	}
+}
+
+const poolDefaultCap = 25
+
+type intPoolPool struct {
+	pools []*intPool
+	lock  sync.Mutex
+}
+
+var poolOfIntPools = &intPoolPool{
+	pools: make([]*intPool, 0, poolDefaultCap),
+}
+
+func (ipp *intPoolPool) get() *intPool {
+	ipp.lock.Lock()
+	defer ipp.lock.Unlock()
+
+	if len(poolOfIntPools.pools) > 0 {
+		ip := ipp.pools[len(ipp.pools)-1]
+		ipp.pools = ipp.pools[:len(ipp.pools)-1]
+		return ip
+	}
+	return newIntPool()
+}
+
+func (ipp *intPoolPool) put(ip *intPool) {
+	ipp.lock.Lock()
+	defer ipp.lock.Unlock()
+
+	if len(ipp.pools) < cap(ipp.pools) {
+		ipp.pools = append(ipp.pools, ip)
 	}
 }

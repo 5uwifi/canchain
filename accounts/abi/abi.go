@@ -25,9 +25,7 @@ func JSON(reader io.Reader) (ABI, error) {
 }
 
 func (abi ABI) Pack(name string, args ...interface{}) ([]byte, error) {
-	// Fetch the ABI of the requested method
 	if name == "" {
-		// constructor
 		arguments, err := abi.Constructor.Inputs.Pack(args...)
 		if err != nil {
 			return nil, err
@@ -44,7 +42,6 @@ func (abi ABI) Pack(name string, args ...interface{}) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Pack up the method ID too if not a constructor and return
 	return append(method.Id(), arguments...), nil
 }
 
@@ -52,8 +49,6 @@ func (abi ABI) Unpack(v interface{}, name string, output []byte) (err error) {
 	if len(output) == 0 {
 		return fmt.Errorf("abi: unmarshalling empty output")
 	}
-	// since there can't be naming collisions with contracts and events,
-	// we need to decide whether we're calling a method or an event
 	if method, ok := abi.Methods[name]; ok {
 		if len(output)%32 != 0 {
 			return fmt.Errorf("abi: improperly formatted output")
@@ -87,7 +82,6 @@ func (abi *ABI) UnmarshalJSON(data []byte) error {
 			abi.Constructor = Method{
 				Inputs: field.Inputs,
 			}
-		// empty defaults to function according to the abi spec
 		case "function", "":
 			abi.Methods[field.Name] = Method{
 				Name:    field.Name,

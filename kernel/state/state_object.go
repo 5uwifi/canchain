@@ -7,8 +7,8 @@ import (
 	"math/big"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/rlp"
 )
 
 var emptyCodeHash = crypto.Keccak256(nil)
@@ -16,7 +16,7 @@ var emptyCodeHash = crypto.Keccak256(nil)
 type Code []byte
 
 func (self Code) String() string {
-	return string(self) //strings.Join(Disassemble(self), " ")
+	return string(self)
 }
 
 type Storage map[common.Hash]common.Hash
@@ -38,31 +38,21 @@ func (self Storage) Copy() Storage {
 	return cpy
 }
 
-//
 type stateObject struct {
 	address  common.Address
-	addrHash common.Hash // hash of ethereum address of the account
+	addrHash common.Hash
 	data     Account
 	db       *StateDB
 
-	// DB error.
-	// State objects are used by the consensus core and VM which are
-	// unable to deal with database-level errors. Any error that occurs
-	// during a database read is memoized here and will eventually be returned
-	// by StateDB.Commit.
 	dbErr error
 
-	// Write caches.
-	trie Trie // storage trie, which becomes non-nil on first access
-	code Code // contract bytecode, which gets set when code is loaded
+	trie Trie
+	code Code
 
-	cachedStorage Storage // Storage entry cache to avoid duplicate reads
-	dirtyStorage  Storage // Storage entries that need to be flushed to disk
+	cachedStorage Storage
+	dirtyStorage  Storage
 
-	// Cache flags.
-	// When an object is marked suicided it will be delete from the trie
-	// during the "update" phase of the state transition.
-	dirtyCode bool // true if the code was updated
+	dirtyCode bool
 	suicided  bool
 	deleted   bool
 }
@@ -74,7 +64,7 @@ func (s *stateObject) empty() bool {
 type Account struct {
 	Nonce    uint64
 	Balance  *big.Int
-	Root     common.Hash // merkle root of the storage trie
+	Root     common.Hash
 	CodeHash []byte
 }
 
@@ -114,8 +104,6 @@ func (c *stateObject) touch() {
 		account: &c.address,
 	})
 	if c.address == ripemd {
-		// Explicitly put it in the dirty-cache, which is otherwise generated from
-		// flattened journals.
 		c.db.journal.dirty(c.address)
 	}
 }
@@ -137,7 +125,6 @@ func (self *stateObject) GetState(db Database, key common.Hash) common.Hash {
 	if exists {
 		return value
 	}
-	// Load from DB in case it is missing.
 	enc, err := self.getTrie(db).TryGet(key[:])
 	if err != nil {
 		self.setError(err)
@@ -176,7 +163,6 @@ func (self *stateObject) updateTrie(db Database) Trie {
 			self.setError(tr.TryDelete(key[:]))
 			continue
 		}
-		// Encoding []byte cannot fail, ok to ignore the error.
 		v, _ := rlp.EncodeToBytes(bytes.TrimLeft(value[:], "\x00"))
 		self.setError(tr.TryUpdate(key[:], v))
 	}
@@ -201,8 +187,6 @@ func (self *stateObject) CommitTrie(db Database) error {
 }
 
 func (c *stateObject) AddBalance(amount *big.Int) {
-	// EIP158: We must check emptiness for the objects such that the account
-	// clearing (0,0,0 objects) can take effect.
 	if amount.Sign() == 0 {
 		if c.empty() {
 			c.touch()
@@ -247,9 +231,6 @@ func (self *stateObject) deepCopy(db *StateDB) *stateObject {
 	stateObject.deleted = self.deleted
 	return stateObject
 }
-
-//
-//
 
 func (c *stateObject) Address() common.Address {
 	return c.address

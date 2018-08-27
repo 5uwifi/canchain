@@ -10,7 +10,7 @@ import (
 type Argument struct {
 	Name    string
 	Type    Type
-	Indexed bool // indexed is only used by events
+	Indexed bool
 }
 
 type Arguments []Argument
@@ -62,7 +62,6 @@ func (arguments Arguments) isTuple() bool {
 
 func (arguments Arguments) Unpack(v interface{}, data []byte) error {
 
-	// make sure the passed value is arguments pointer
 	if reflect.Ptr != reflect.ValueOf(v).Kind() {
 		return fmt.Errorf("abi: Unpack(non-pointer %T)", v)
 	}
@@ -88,7 +87,6 @@ func (arguments Arguments) unpackTuple(v interface{}, marshalledValues []interfa
 		return err
 	}
 
-	// If the interface is a struct, get of abi->struct_field mapping
 
 	var abi2struct map[string]string
 	if kind == reflect.Struct {
@@ -156,14 +154,11 @@ func (arguments Arguments) unpackAtomic(v interface{}, marshalledValues []interf
 
 func getArraySize(arr *Type) int {
 	size := arr.Size
-	// Arrays can be nested, with each element being the same size
 	arr = arr.Elem
 	for arr.T == ArrayTy {
-		// Keep multiplying by elem.Size while the elem is an array.
 		size *= arr.Size
 		arr = arr.Elem
 	}
-	// Now we have the full array size, including its children.
 	return size
 }
 
@@ -173,16 +168,6 @@ func (arguments Arguments) UnpackValues(data []byte) ([]interface{}, error) {
 	for index, arg := range arguments.NonIndexed() {
 		marshalledValue, err := toGoType((index+virtualArgs)*32, arg.Type, data)
 		if arg.Type.T == ArrayTy {
-			// If we have a static array, like [3]uint256, these are coded as
-			// just like uint256,uint256,uint256.
-			// This means that we need to add two 'virtual' arguments when
-			// we count the index from now on.
-			//
-			// Array values nested multiple levels deep are also encoded inline:
-			// [2][3]uint256: uint256,uint256,uint256,uint256,uint256,uint256
-			//
-			// Calculate the full array size to get the correct offset for the next argument.
-			// Decrement it by 1, as the normal index increment is still applied.
 			virtualArgs += getArraySize(&arg.Type) - 1
 		}
 		if err != nil {
@@ -198,16 +183,12 @@ func (arguments Arguments) PackValues(args []interface{}) ([]byte, error) {
 }
 
 func (arguments Arguments) Pack(args ...interface{}) ([]byte, error) {
-	// Make sure arguments match up and pack them
 	abiArgs := arguments
 	if len(args) != len(abiArgs) {
 		return nil, fmt.Errorf("argument count mismatch: %d for %d", len(args), len(abiArgs))
 	}
-	// variable input is the output appended at the end of packed
-	// output. This is used for strings and bytes types input.
 	var variableInput []byte
 
-	// input offset is the bytes offset for packed output
 	inputOffset := 0
 	for _, abiArg := range abiArgs {
 		if abiArg.Type.T == ArrayTy {
@@ -219,26 +200,18 @@ func (arguments Arguments) Pack(args ...interface{}) ([]byte, error) {
 	var ret []byte
 	for i, a := range args {
 		input := abiArgs[i]
-		// pack the input
 		packed, err := input.Type.pack(reflect.ValueOf(a))
 		if err != nil {
 			return nil, err
 		}
-		// check for a slice type (string, bytes, slice)
 		if input.Type.requiresLengthPrefix() {
-			// calculate the offset
 			offset := inputOffset + len(variableInput)
-			// set the offset
 			ret = append(ret, packNum(reflect.ValueOf(offset))...)
-			// Append the packed output to the variable input. The variable input
-			// will be appended at the end of the input.
 			variableInput = append(variableInput, packed...)
 		} else {
-			// append the packed value to the input
 			ret = append(ret, packed...)
 		}
 	}
-	// append the variable input at the end of the packed input
 	ret = append(ret, variableInput...)
 
 	return ret, nil

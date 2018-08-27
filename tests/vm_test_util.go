@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -7,14 +6,14 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/common/math"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/vm"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/params"
 )
 
@@ -37,6 +36,7 @@ type vmJSON struct {
 	PostStateRoot common.Hash           `json:"postStateRoot"`
 }
 
+//go:generate gencodec -type vmExec -field-override vmExecMarshaling -out gen_vmexec.go
 
 type vmExec struct {
 	Address  common.Address `json:"address"  gencodec:"required"`
@@ -73,7 +73,6 @@ func (t *VMTest) Run(vmconfig vm.Config) error {
 		}
 		return nil
 	}
-	// Test declares gas, expecting outputs to match.
 	if !bytes.Equal(ret, t.json.Out) {
 		return fmt.Errorf("return data mismatch: got %x, want %x", ret, t.json.Out)
 	}
@@ -87,9 +86,6 @@ func (t *VMTest) Run(vmconfig vm.Config) error {
 			}
 		}
 	}
-	// if root := statedb.IntermediateRoot(false); root != t.json.PostStateRoot {
-	// 	return fmt.Errorf("post state root mismatch, got %x, want %x", root, t.json.PostStateRoot)
-	// }
 	if logs := rlpHash(statedb.Logs()); logs != common.Hash(t.json.Logs) {
 		return fmt.Errorf("post state logs hash mismatch: got %x, want %x", logs, t.json.Logs)
 	}

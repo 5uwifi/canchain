@@ -11,7 +11,7 @@ import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 var testKey, _ = crypto.HexToECDSA("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291")
@@ -25,13 +25,13 @@ var waitDeployedTests = map[string]struct {
 	"successful deploy": {
 		code:        `6060604052600a8060106000396000f360606040526008565b00`,
 		gas:         3000000,
-		wantAddress: common.HexToAddress("0xe1211fb58e04eaa722266EE7A5E0457C52A9272D972658C9856c"),
+		wantAddress: common.HexToAddress("0x3a220f351252089d385b29beca14e27f204c296a"),
 	},
 	"empty code": {
 		code:        ``,
 		gas:         300000,
 		wantErr:     bind.ErrNoCodeAfterDeploy,
-		wantAddress: common.HexToAddress("0xe1211fb58e04eaa722266EE7A5E0457C52A9272D972658C9856c"),
+		wantAddress: common.HexToAddress("0x3a220f351252089d385b29beca14e27f204c296a"),
 	},
 }
 
@@ -41,11 +41,9 @@ func TestWaitDeployed(t *testing.T) {
 			crypto.PubkeyToAddress(testKey.PublicKey): {Balance: big.NewInt(10000000000)},
 		})
 
-		// Create the transaction.
 		tx := types.NewContractCreation(0, big.NewInt(0), test.gas, big.NewInt(1), common.FromHex(test.code))
 		tx, _ = types.SignTx(tx, types.HomesteadSigner{}, testKey)
 
-		// Wait for it to get mined in the background.
 		var (
 			err     error
 			address common.Address
@@ -57,7 +55,6 @@ func TestWaitDeployed(t *testing.T) {
 			close(mined)
 		}()
 
-		// Send and mine the transaction.
 		backend.SendTransaction(ctx, tx)
 		backend.Commit()
 

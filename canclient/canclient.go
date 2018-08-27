@@ -11,7 +11,7 @@ import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/rpc"
 )
 
@@ -35,19 +35,16 @@ func NewClient(c *rpc.Client) *Client {
 	return &Client{c}
 }
 
-func (cc *Client) Close() {
-	cc.c.Close()
+func (ec *Client) Close() {
+	ec.c.Close()
 }
 
-
-//
-func (cc *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
-	return cc.getBlock(ctx, "can_getBlockByHash", hash, true)
+func (ec *Client) BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	return ec.getBlock(ctx, "eth_getBlockByHash", hash, true)
 }
 
-//
-func (cc *Client) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
-	return cc.getBlock(ctx, "can_getBlockByNumber", toBlockNumArg(number), true)
+func (ec *Client) BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error) {
+	return ec.getBlock(ctx, "eth_getBlockByNumber", toBlockNumArg(number), true)
 }
 
 type rpcBlock struct {
@@ -56,15 +53,14 @@ type rpcBlock struct {
 	UncleHashes  []common.Hash    `json:"uncles"`
 }
 
-func (cc *Client) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
+func (ec *Client) getBlock(ctx context.Context, method string, args ...interface{}) (*types.Block, error) {
 	var raw json.RawMessage
-	err := cc.c.CallContext(ctx, &raw, method, args...)
+	err := ec.c.CallContext(ctx, &raw, method, args...)
 	if err != nil {
 		return nil, err
 	} else if len(raw) == 0 {
 		return nil, canchain.NotFound
 	}
-	// Decode header and transactions.
 	var head *types.Header
 	var body rpcBlock
 	if err := json.Unmarshal(raw, &head); err != nil {
@@ -73,7 +69,6 @@ func (cc *Client) getBlock(ctx context.Context, method string, args ...interface
 	if err := json.Unmarshal(raw, &body); err != nil {
 		return nil, err
 	}
-	// Quick-verify transaction and uncle lists. This mostly helps with debugging the server.
 	if head.UncleHash == types.EmptyUncleHash && len(body.UncleHashes) > 0 {
 		return nil, fmt.Errorf("server returned non-empty uncle list but block header indicates no uncles")
 	}
@@ -86,19 +81,18 @@ func (cc *Client) getBlock(ctx context.Context, method string, args ...interface
 	if head.TxHash != types.EmptyRootHash && len(body.Transactions) == 0 {
 		return nil, fmt.Errorf("server returned empty transaction list but block header indicates transactions")
 	}
-	// Load uncles because they are not included in the block response.
 	var uncles []*types.Header
 	if len(body.UncleHashes) > 0 {
 		uncles = make([]*types.Header, len(body.UncleHashes))
 		reqs := make([]rpc.BatchElem, len(body.UncleHashes))
 		for i := range reqs {
 			reqs[i] = rpc.BatchElem{
-				Method: "can_getUncleByBlockHashAndIndex",
+				Method: "eth_getUncleByBlockHashAndIndex",
 				Args:   []interface{}{body.Hash, hexutil.EncodeUint64(uint64(i))},
 				Result: &uncles[i],
 			}
 		}
-		if err := cc.c.BatchCallContext(ctx, reqs); err != nil {
+		if err := ec.c.BatchCallContext(ctx, reqs); err != nil {
 			return nil, err
 		}
 		for i := range reqs {
@@ -110,7 +104,6 @@ func (cc *Client) getBlock(ctx context.Context, method string, args ...interface
 			}
 		}
 	}
-	// Fill the sender cache of transactions in the block.
 	txs := make([]*types.Transaction, len(body.Transactions))
 	for i, tx := range body.Transactions {
 		if tx.From != nil {
@@ -121,18 +114,18 @@ func (cc *Client) getBlock(ctx context.Context, method string, args ...interface
 	return types.NewBlockWithHeader(head).WithBody(txs, uncles), nil
 }
 
-func (cc *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
+func (ec *Client) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
 	var head *types.Header
-	err := cc.c.CallContext(ctx, &head, "can_getBlockByHash", hash, false)
+	err := ec.c.CallContext(ctx, &head, "eth_getBlockByHash", hash, false)
 	if err == nil && head == nil {
 		err = canchain.NotFound
 	}
 	return head, err
 }
 
-func (cc *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
+func (ec *Client) HeaderByNumber(ctx context.Context, number *big.Int) (*types.Header, error) {
 	var head *types.Header
-	err := cc.c.CallContext(ctx, &head, "can_getBlockByNumber", toBlockNumArg(number), false)
+	err := ec.c.CallContext(ctx, &head, "eth_getBlockByNumber", toBlockNumArg(number), false)
 	if err == nil && head == nil {
 		err = canchain.NotFound
 	}
@@ -157,9 +150,9 @@ func (tx *rpcTransaction) UnmarshalJSON(msg []byte) error {
 	return json.Unmarshal(msg, &tx.txExtraInfo)
 }
 
-func (cc *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
+func (ec *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *types.Transaction, isPending bool, err error) {
 	var json *rpcTransaction
-	err = cc.c.CallContext(ctx, &json, "can_getTransactionByHash", hash)
+	err = ec.c.CallContext(ctx, &json, "eth_getTransactionByHash", hash)
 	if err != nil {
 		return nil, false, err
 	} else if json == nil {
@@ -173,9 +166,7 @@ func (cc *Client) TransactionByHash(ctx context.Context, hash common.Hash) (tx *
 	return json.tx, json.BlockNumber == nil, nil
 }
 
-//
-func (cc *Client) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
-	// Try to load the address from the cache.
+func (ec *Client) TransactionSender(ctx context.Context, tx *types.Transaction, block common.Hash, index uint) (common.Address, error) {
 	sender, err := types.Sender(&senderFromServer{blockhash: block}, tx)
 	if err == nil {
 		return sender, nil
@@ -184,7 +175,7 @@ func (cc *Client) TransactionSender(ctx context.Context, tx *types.Transaction, 
 		Hash common.Hash
 		From common.Address
 	}
-	if err = cc.c.CallContext(ctx, &meta, "can_getTransactionByBlockHashAndIndex", block, hexutil.Uint64(index)); err != nil {
+	if err = ec.c.CallContext(ctx, &meta, "eth_getTransactionByBlockHashAndIndex", block, hexutil.Uint64(index)); err != nil {
 		return common.Address{}, err
 	}
 	if meta.Hash == (common.Hash{}) || meta.Hash != tx.Hash() {
@@ -193,15 +184,15 @@ func (cc *Client) TransactionSender(ctx context.Context, tx *types.Transaction, 
 	return meta.From, nil
 }
 
-func (cc *Client) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
+func (ec *Client) TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error) {
 	var num hexutil.Uint
-	err := cc.c.CallContext(ctx, &num, "can_getBlockTransactionCountByHash", blockHash)
+	err := ec.c.CallContext(ctx, &num, "eth_getBlockTransactionCountByHash", blockHash)
 	return uint(num), err
 }
 
-func (cc *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
+func (ec *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error) {
 	var json *rpcTransaction
-	err := cc.c.CallContext(ctx, &json, "can_getTransactionByBlockHashAndIndex", blockHash, hexutil.Uint64(index))
+	err := ec.c.CallContext(ctx, &json, "eth_getTransactionByBlockHashAndIndex", blockHash, hexutil.Uint64(index))
 	if err == nil {
 		if json == nil {
 			return nil, canchain.NotFound
@@ -215,9 +206,9 @@ func (cc *Client) TransactionInBlock(ctx context.Context, blockHash common.Hash,
 	return json.tx, err
 }
 
-func (cc *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
+func (ec *Client) TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error) {
 	var r *types.Receipt
-	err := cc.c.CallContext(ctx, &r, "can_getTransactionReceipt", txHash)
+	err := ec.c.CallContext(ctx, &r, "eth_getTransactionReceipt", txHash)
 	if err == nil {
 		if r == nil {
 			return nil, canchain.NotFound
@@ -241,15 +232,14 @@ type rpcProgress struct {
 	KnownStates   hexutil.Uint64
 }
 
-func (cc *Client) SyncProgress(ctx context.Context) (*canchain.SyncProgress, error) {
+func (ec *Client) SyncProgress(ctx context.Context) (*canchain.SyncProgress, error) {
 	var raw json.RawMessage
-	if err := cc.c.CallContext(ctx, &raw, "can_syncing"); err != nil {
+	if err := ec.c.CallContext(ctx, &raw, "eth_syncing"); err != nil {
 		return nil, err
 	}
-	// Handle the possible response types
 	var syncing bool
 	if err := json.Unmarshal(raw, &syncing); err == nil {
-		return nil, nil // Not syncing (always false)
+		return nil, nil
 	}
 	var progress *rpcProgress
 	if err := json.Unmarshal(raw, &progress); err != nil {
@@ -264,15 +254,14 @@ func (cc *Client) SyncProgress(ctx context.Context) (*canchain.SyncProgress, err
 	}, nil
 }
 
-func (cc *Client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (canchain.Subscription, error) {
-	return cc.c.CanSubscribe(ctx, ch, "newHeads")
+func (ec *Client) SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (canchain.Subscription, error) {
+	return ec.c.EthSubscribe(ctx, ch, "newHeads")
 }
 
-
-func (cc *Client) NetworkID(ctx context.Context) (*big.Int, error) {
+func (ec *Client) NetworkID(ctx context.Context) (*big.Int, error) {
 	version := new(big.Int)
 	var ver string
-	if err := cc.c.CallContext(ctx, &ver, "net_version"); err != nil {
+	if err := ec.c.CallContext(ctx, &ver, "net_version"); err != nil {
 		return nil, err
 	}
 	if _, ok := version.SetString(ver, 10); !ok {
@@ -281,39 +270,38 @@ func (cc *Client) NetworkID(ctx context.Context) (*big.Int, error) {
 	return version, nil
 }
 
-func (cc *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
+func (ec *Client) BalanceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (*big.Int, error) {
 	var result hexutil.Big
-	err := cc.c.CallContext(ctx, &result, "can_getBalance", account, toBlockNumArg(blockNumber))
+	err := ec.c.CallContext(ctx, &result, "eth_getBalance", account, toBlockNumArg(blockNumber))
 	return (*big.Int)(&result), err
 }
 
-func (cc *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) StorageAt(ctx context.Context, account common.Address, key common.Hash, blockNumber *big.Int) ([]byte, error) {
 	var result hexutil.Bytes
-	err := cc.c.CallContext(ctx, &result, "can_getStorageAt", account, key, toBlockNumArg(blockNumber))
+	err := ec.c.CallContext(ctx, &result, "eth_getStorageAt", account, key, toBlockNumArg(blockNumber))
 	return result, err
 }
 
-func (cc *Client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) CodeAt(ctx context.Context, account common.Address, blockNumber *big.Int) ([]byte, error) {
 	var result hexutil.Bytes
-	err := cc.c.CallContext(ctx, &result, "can_getCode", account, toBlockNumArg(blockNumber))
+	err := ec.c.CallContext(ctx, &result, "eth_getCode", account, toBlockNumArg(blockNumber))
 	return result, err
 }
 
-func (cc *Client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
+func (ec *Client) NonceAt(ctx context.Context, account common.Address, blockNumber *big.Int) (uint64, error) {
 	var result hexutil.Uint64
-	err := cc.c.CallContext(ctx, &result, "can_getTransactionCount", account, toBlockNumArg(blockNumber))
+	err := ec.c.CallContext(ctx, &result, "eth_getTransactionCount", account, toBlockNumArg(blockNumber))
 	return uint64(result), err
 }
 
-
-func (cc *Client) FilterLogs(ctx context.Context, q canchain.FilterQuery) ([]types.Log, error) {
+func (ec *Client) FilterLogs(ctx context.Context, q canchain.FilterQuery) ([]types.Log, error) {
 	var result []types.Log
-	err := cc.c.CallContext(ctx, &result, "can_getLogs", toFilterArg(q))
+	err := ec.c.CallContext(ctx, &result, "eth_getLogs", toFilterArg(q))
 	return result, err
 }
 
-func (cc *Client) SubscribeFilterLogs(ctx context.Context, q canchain.FilterQuery, ch chan<- types.Log) (canchain.Subscription, error) {
-	return cc.c.CanSubscribe(ctx, ch, "logs", toFilterArg(q))
+func (ec *Client) SubscribeFilterLogs(ctx context.Context, q canchain.FilterQuery, ch chan<- types.Log) (canchain.Subscription, error) {
+	return ec.c.EthSubscribe(ctx, ch, "logs", toFilterArg(q))
 }
 
 func toFilterArg(q canchain.FilterQuery) interface{} {
@@ -329,82 +317,77 @@ func toFilterArg(q canchain.FilterQuery) interface{} {
 	return arg
 }
 
-
-func (cc *Client) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
+func (ec *Client) PendingBalanceAt(ctx context.Context, account common.Address) (*big.Int, error) {
 	var result hexutil.Big
-	err := cc.c.CallContext(ctx, &result, "can_getBalance", account, "pending")
+	err := ec.c.CallContext(ctx, &result, "eth_getBalance", account, "pending")
 	return (*big.Int)(&result), err
 }
 
-func (cc *Client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
+func (ec *Client) PendingStorageAt(ctx context.Context, account common.Address, key common.Hash) ([]byte, error) {
 	var result hexutil.Bytes
-	err := cc.c.CallContext(ctx, &result, "can_getStorageAt", account, key, "pending")
+	err := ec.c.CallContext(ctx, &result, "eth_getStorageAt", account, key, "pending")
 	return result, err
 }
 
-func (cc *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
+func (ec *Client) PendingCodeAt(ctx context.Context, account common.Address) ([]byte, error) {
 	var result hexutil.Bytes
-	err := cc.c.CallContext(ctx, &result, "can_getCode", account, "pending")
+	err := ec.c.CallContext(ctx, &result, "eth_getCode", account, "pending")
 	return result, err
 }
 
-func (cc *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
+func (ec *Client) PendingNonceAt(ctx context.Context, account common.Address) (uint64, error) {
 	var result hexutil.Uint64
-	err := cc.c.CallContext(ctx, &result, "can_getTransactionCount", account, "pending")
+	err := ec.c.CallContext(ctx, &result, "eth_getTransactionCount", account, "pending")
 	return uint64(result), err
 }
 
-func (cc *Client) PendingTransactionCount(ctx context.Context) (uint, error) {
+func (ec *Client) PendingTransactionCount(ctx context.Context) (uint, error) {
 	var num hexutil.Uint
-	err := cc.c.CallContext(ctx, &num, "can_getBlockTransactionCountByNumber", "pending")
+	err := ec.c.CallContext(ctx, &num, "eth_getBlockTransactionCountByNumber", "pending")
 	return uint(num), err
 }
 
-
-
-//
-func (cc *Client) CallContract(ctx context.Context, msg canchain.CallMsg, blockNumber *big.Int) ([]byte, error) {
+func (ec *Client) CallContract(ctx context.Context, msg canchain.CallMsg, blockNumber *big.Int) ([]byte, error) {
 	var hex hexutil.Bytes
-	err := cc.c.CallContext(ctx, &hex, "can_call", toCallArg(msg), toBlockNumArg(blockNumber))
+	err := ec.c.CallContext(ctx, &hex, "eth_call", toCallArg(msg), toBlockNumArg(blockNumber))
 	if err != nil {
 		return nil, err
 	}
 	return hex, nil
 }
 
-func (cc *Client) PendingCallContract(ctx context.Context, msg canchain.CallMsg) ([]byte, error) {
+func (ec *Client) PendingCallContract(ctx context.Context, msg canchain.CallMsg) ([]byte, error) {
 	var hex hexutil.Bytes
-	err := cc.c.CallContext(ctx, &hex, "can_call", toCallArg(msg), "pending")
+	err := ec.c.CallContext(ctx, &hex, "eth_call", toCallArg(msg), "pending")
 	if err != nil {
 		return nil, err
 	}
 	return hex, nil
 }
 
-func (cc *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+func (ec *Client) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	var hex hexutil.Big
-	if err := cc.c.CallContext(ctx, &hex, "can_gasPrice"); err != nil {
+	if err := ec.c.CallContext(ctx, &hex, "eth_gasPrice"); err != nil {
 		return nil, err
 	}
 	return (*big.Int)(&hex), nil
 }
 
-func (cc *Client) EstimateGas(ctx context.Context, msg canchain.CallMsg) (uint64, error) {
+func (ec *Client) EstimateGas(ctx context.Context, msg canchain.CallMsg) (uint64, error) {
 	var hex hexutil.Uint64
-	err := cc.c.CallContext(ctx, &hex, "can_estimateGas", toCallArg(msg))
+	err := ec.c.CallContext(ctx, &hex, "eth_estimateGas", toCallArg(msg))
 	if err != nil {
 		return 0, err
 	}
 	return uint64(hex), nil
 }
 
-//
-func (cc *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
+func (ec *Client) SendTransaction(ctx context.Context, tx *types.Transaction) error {
 	data, err := rlp.EncodeToBytes(tx)
 	if err != nil {
 		return err
 	}
-	return cc.c.CallContext(ctx, nil, "can_sendRawTransaction", common.ToHex(data))
+	return ec.c.CallContext(ctx, nil, "eth_sendRawTransaction", common.ToHex(data))
 }
 
 func toCallArg(msg canchain.CallMsg) interface{} {

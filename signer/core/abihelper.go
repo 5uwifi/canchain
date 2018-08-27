@@ -26,11 +26,11 @@ type decodedCallData struct {
 
 func (arg decodedArgument) String() string {
 	var value string
-	switch arg.value.(type) {
+	switch val := arg.value.(type) {
 	case fmt.Stringer:
-		value = arg.value.(fmt.Stringer).String()
+		value = val.String()
 	default:
-		value = fmt.Sprintf("%v", arg.value)
+		value = fmt.Sprintf("%v", val)
 	}
 	return fmt.Sprintf("%v: %v", arg.soltype.Type.String(), value)
 }
@@ -82,9 +82,6 @@ func parseCallData(calldata []byte, abidata string) (*decodedCallData, error) {
 		decoded.inputs = append(decoded.inputs, decodedArg)
 	}
 
-	// We're finished decoding the data. At this point, we encode the decoded data to see if it matches with the
-	// original data. If we didn't do that, it would e.g. be possible to stuff extra data into the arguments, which
-	// is not detected by merely decoding the data.
 
 	var (
 		encoded []byte
@@ -167,7 +164,6 @@ func NewAbiDBFromFiles(standard, custom string) (*AbiDb, error) {
 		return nil, err
 	}
 	json.Unmarshal(raw, &db.db)
-	// Custom file may not exist. Will be created during save, if needed
 	if _, err := os.Stat(custom); err == nil {
 		raw, err = ioutil.ReadFile(custom)
 		if err != nil {
@@ -199,7 +195,7 @@ func (db *AbiDb) Size() int {
 func (db *AbiDb) saveCustomAbi(selector, signature string) error {
 	db.customdb[signature] = selector
 	if db.customdbPath == "" {
-		return nil //Not an error per se, just not used
+		return nil
 	}
 	d, err := json.Marshal(db.customdb)
 	if err != nil {

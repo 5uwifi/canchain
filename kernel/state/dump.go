@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/rlp"
-	"github.com/5uwifi/canchain/basis/trie"
+	"github.com/5uwifi/canchain/lib/rlp"
+	"github.com/5uwifi/canchain/lib/trie"
 )
 
 type DumpAccount struct {

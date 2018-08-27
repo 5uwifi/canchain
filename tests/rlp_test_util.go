@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -9,20 +8,12 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/rlp"
 )
 
 type RLPTest struct {
-	// If the value of In is "INVALID" or "VALID", the test
-	// checks whether Out can be decoded into a value of
-	// type interface{}.
-	//
-	// For other JSON values, In is treated as a driver for
-	// calls to rlp.Stream. The test also verifies that encoding
-	// In produces the bytes in Out.
 	In interface{}
 
-	// Out is a hex-encoded RLP value.
 	Out string
 }
 
@@ -32,12 +23,10 @@ func (t *RLPTest) Run() error {
 		return fmt.Errorf("invalid hex in Out")
 	}
 
-	// Handle simple decoding tests with no actual In value.
 	if t.In == "VALID" || t.In == "INVALID" {
 		return checkDecodeInterface(outb, t.In == "VALID")
 	}
 
-	// Check whether encoding the value produces the same bytes.
 	in := translateJSON(t.In)
 	b, err := rlp.EncodeToBytes(in)
 	if err != nil {
@@ -46,7 +35,6 @@ func (t *RLPTest) Run() error {
 	if !bytes.Equal(b, outb) {
 		return fmt.Errorf("encode produced %x, want %x", b, outb)
 	}
-	// Test stream decoding.
 	s := rlp.NewStream(bytes.NewReader(outb), 0)
 	return checkDecodeFromJSON(s, in)
 }
@@ -67,7 +55,7 @@ func translateJSON(v interface{}) interface{} {
 	case float64:
 		return uint64(v)
 	case string:
-		if len(v) > 0 && v[0] == '#' { // # starts a faux big int.
+		if len(v) > 0 && v[0] == '#' {
 			big, ok := new(big.Int).SetString(v[1:], 10)
 			if !ok {
 				panic(fmt.Errorf("bad test: bad big int: %q", v))

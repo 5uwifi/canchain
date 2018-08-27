@@ -29,47 +29,38 @@ type Type struct {
 	Kind reflect.Kind
 	Type reflect.Type
 	Size int
-	T    byte // Our own type checking
+	T    byte
 
-	stringKind string // holds the unparsed string for deriving signatures
+	stringKind string
 }
 
 var (
-	// typeRegex parses the abi sub types
 	typeRegex = regexp.MustCompile("([a-zA-Z]+)(([0-9]+)(x([0-9]+))?)?")
 )
 
 func NewType(t string) (typ Type, err error) {
-	// check that array brackets are equal if they exist
 	if strings.Count(t, "[") != strings.Count(t, "]") {
 		return Type{}, fmt.Errorf("invalid arg type in abi")
 	}
 
 	typ.stringKind = t
 
-	// if there are brackets, get ready to go into slice/array mode and
-	// recursively create the type
 	if strings.Count(t, "[") != 0 {
 		i := strings.LastIndex(t, "[")
-		// recursively embed the type
 		embeddedType, err := NewType(t[:i])
 		if err != nil {
 			return Type{}, err
 		}
-		// grab the last cell and create a type from there
 		sliced := t[i:]
-		// grab the slice size with regexp
 		re := regexp.MustCompile("[0-9]+")
 		intz := re.FindAllString(sliced, -1)
 
 		if len(intz) == 0 {
-			// is a slice
 			typ.T = SliceTy
 			typ.Kind = reflect.Slice
 			typ.Elem = &embeddedType
 			typ.Type = reflect.SliceOf(embeddedType.Type)
 		} else if len(intz) == 1 {
-			// is a array
 			typ.T = ArrayTy
 			typ.Kind = reflect.Array
 			typ.Elem = &embeddedType
@@ -83,9 +74,7 @@ func NewType(t string) (typ Type, err error) {
 		}
 		return typ, err
 	}
-	// parse the type and size of the abi-type.
 	parsedType := typeRegex.FindAllStringSubmatch(t, -1)[0]
-	// varSize is the size of the variable
 	var varSize int
 	if len(parsedType[3]) > 0 {
 		var err error
@@ -95,12 +84,9 @@ func NewType(t string) (typ Type, err error) {
 		}
 	} else {
 		if parsedType[0] == "uint" || parsedType[0] == "int" {
-			// this should fail because it means that there's something wrong with
-			// the abi type (the compiler should always format it to the size...always)
 			return Type{}, fmt.Errorf("unsupported arg type: %s", t)
 		}
 	}
-	// varType is the parsed abi type
 	switch varType := parsedType[1]; varType {
 	case "int":
 		typ.Kind, typ.Type = reflectIntKindAndType(false, varSize)
@@ -117,7 +103,7 @@ func NewType(t string) (typ Type, err error) {
 	case "address":
 		typ.Kind = reflect.Array
 		typ.Type = addressT
-		typ.Size = 26
+		typ.Size = 20
 		typ.T = AddressTy
 	case "string":
 		typ.Kind = reflect.String
@@ -151,7 +137,6 @@ func (t Type) String() (out string) {
 }
 
 func (t Type) pack(v reflect.Value) ([]byte, error) {
-	// dereference pointer first if it's a pointer
 	v = indirect(v)
 
 	if err := typeCheck(t, v); err != nil {

@@ -12,12 +12,12 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/accounts/keystore"
-	"github.com/5uwifi/canchain/helper/utils"
+	"github.com/5uwifi/canchain/cmd/utils"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/rlp"
+	"github.com/5uwifi/canchain/privacy/canapi"
 )
 
 type HeadlessUI struct {
@@ -36,7 +36,7 @@ func (ui *HeadlessUI) ApproveTx(request *SignTxRequest) (SignTxResponse, error) 
 	switch <-ui.controller {
 	case "Y":
 		return SignTxResponse{request.Transaction, true, <-ui.controller}, nil
-	case "M": //Modify
+	case "M":
 		old := big.Int(request.Transaction.Value)
 		newVal := big.NewInt(0).Add(&old, big.NewInt(1))
 		request.Transaction.Value = hexutil.Big(*newVal)
@@ -84,16 +84,14 @@ func (ui *HeadlessUI) ApproveNewAccount(request *NewAccountRequest) (NewAccountR
 	return NewAccountResponse{false, ""}, nil
 }
 func (ui *HeadlessUI) ShowError(message string) {
-	//stdout is used by communication
 	fmt.Fprint(os.Stderr, message)
 }
 func (ui *HeadlessUI) ShowInfo(message string) {
-	//stdout is used by communication
 	fmt.Fprint(os.Stderr, message)
 }
 
 func tmpDirName(t *testing.T) string {
-	d, err := ioutil.TempDir("", "can-keystore-test")
+	d, err := ioutil.TempDir("", "eth-keystore-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -108,7 +106,7 @@ func setup(t *testing.T) (*SignerAPI, chan string) {
 
 	controller := make(chan string, 10)
 
-	db, err := NewAbiDBFromFile("./4byte.json")
+	db, err := NewAbiDBFromFile("../../cmd/clef/4byte.json")
 	if err != nil {
 		utils.Fatalf(err.Error())
 	}
@@ -132,7 +130,6 @@ func createAccount(control chan string, api *SignerAPI, t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// Some time to allow changes to propagate
 	time.Sleep(250 * time.Millisecond)
 }
 func failCreateAccount(control chan string, api *SignerAPI, t *testing.T) {
@@ -162,7 +159,6 @@ func TestNewAcc(t *testing.T) {
 			t.Errorf("Expected %d accounts, got %d", num, len(list))
 		}
 	}
-	// Testing create and create-deny
 	createAccount(control, api, t)
 	createAccount(control, api, t)
 	failCreateAccount(control, api, t)
@@ -173,8 +169,6 @@ func TestNewAcc(t *testing.T) {
 	failCreateAccount(control, api, t)
 	verifyNum(4)
 
-	// Testing listing:
-	// Listing one Account
 	control <- "1"
 	list, err := api.List(context.Background())
 	if err != nil {
@@ -183,7 +177,6 @@ func TestNewAcc(t *testing.T) {
 	if len(list) != 1 {
 		t.Fatalf("List should only show one Account")
 	}
-	// Listing denied
 	control <- "Nope"
 	list, err = api.List(context.Background())
 	if len(list) != 0 {
@@ -197,7 +190,6 @@ func TestNewAcc(t *testing.T) {
 func TestSignData(t *testing.T) {
 
 	api, control := setup(t)
-	//Create two accounts
 	createAccount(control, api, t)
 	createAccount(control, api, t)
 	control <- "1"
@@ -303,7 +295,6 @@ func TestSignTx(t *testing.T) {
 	}
 	parsedTx := &types.Transaction{}
 	rlp.Decode(bytes.NewReader(res.Raw), parsedTx)
-	//The tx should NOT be modified by the UI
 	if parsedTx.Value().Cmp(tx.Value.ToInt()) != 0 {
 		t.Errorf("Expected value to be unchanged, expected %v got %v", tx.Value, parsedTx.Value())
 	}
@@ -318,7 +309,6 @@ func TestSignTx(t *testing.T) {
 		t.Error("Expected tx to be unmodified by UI")
 	}
 
-	//The tx is modified by the UI
 	control <- "M"
 	control <- "apassword"
 
@@ -329,7 +319,6 @@ func TestSignTx(t *testing.T) {
 
 	parsedTx2 := &types.Transaction{}
 	rlp.Decode(bytes.NewReader(res.Raw), parsedTx2)
-	//The tx should be modified by the UI
 	if parsedTx2.Value().Cmp(tx.Value.ToInt()) != 0 {
 		t.Errorf("Expected value to be unchanged, got %v", parsedTx.Value())
 	}
@@ -343,20 +332,18 @@ func TestSignTx(t *testing.T) {
 /*
 func TestAsyncronousResponses(t *testing.T){
 
-	//Set up one account
 	api, control := setup(t)
 	createAccount(control, api, t)
 
-	// Two transactions, the second one with larger value than the first
 	tx1 := mkTestTx()
 	newVal := big.NewInt(0).Add((*big.Int) (tx1.Value), big.NewInt(1))
 	tx2 := mkTestTx()
 	tx2.Value = (*hexutil.Big)(newVal)
 
-	control <- "W" //wait
-	control <- "Y" //
+	control <- "W"
+	control <- "Y"
 	control <- "apassword"
-	control <- "Y" //
+	control <- "Y"
 	control <- "apassword"
 
 	var err error

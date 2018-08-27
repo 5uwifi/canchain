@@ -11,19 +11,11 @@ import (
 
 var NotFound = errors.New("not found")
 
-
 type Subscription interface {
-	// Unsubscribe cancels the sending of events to the data channel
-	// and closes the error channel.
 	Unsubscribe()
-	// Err returns the subscription error channel. The error channel receives
-	// a value if there is an issue with the subscription (e.g. the network connection
-	// delivering the events has been closed). Only one value will ever be sent.
-	// The error channel is closed by Unsubscribe.
 	Err() <-chan error
 }
 
-//
 type ChainReader interface {
 	BlockByHash(ctx context.Context, hash common.Hash) (*types.Block, error)
 	BlockByNumber(ctx context.Context, number *big.Int) (*types.Block, error)
@@ -32,22 +24,11 @@ type ChainReader interface {
 	TransactionCount(ctx context.Context, blockHash common.Hash) (uint, error)
 	TransactionInBlock(ctx context.Context, blockHash common.Hash, index uint) (*types.Transaction, error)
 
-	// This method subscribes to notifications about changes of the head block of
-	// the canonical chain.
 	SubscribeNewHead(ctx context.Context, ch chan<- *types.Header) (Subscription, error)
 }
 
-//
-//
 type TransactionReader interface {
-	// TransactionByHash checks the pool of pending transactions in addition to the
-	// blockchain. The isPending return value indicates whether the transaction has been
-	// mined yet. Note that the transaction may not be part of the canonical chain even if
-	// it's not pending.
 	TransactionByHash(ctx context.Context, txHash common.Hash) (tx *types.Transaction, isPending bool, err error)
-	// TransactionReceipt returns the receipt of a mined transaction. Note that the
-	// transaction may not be included in the current canonical chain even if a receipt
-	// exists.
 	TransactionReceipt(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 }
 
@@ -59,11 +40,11 @@ type ChainStateReader interface {
 }
 
 type SyncProgress struct {
-	StartingBlock uint64 // Block number where sync began
-	CurrentBlock  uint64 // Current block number where sync is at
-	HighestBlock  uint64 // Highest alleged block number in the chain
-	PulledStates  uint64 // Number of state trie entries already downloaded
-	KnownStates   uint64 // Total number of state trie entries known about
+	StartingBlock uint64
+	CurrentBlock  uint64
+	HighestBlock  uint64
+	PulledStates  uint64
+	KnownStates   uint64
 }
 
 type ChainSyncReader interface {
@@ -71,12 +52,12 @@ type ChainSyncReader interface {
 }
 
 type CallMsg struct {
-	From     common.Address  // the sender of the 'transaction'
-	To       *common.Address // the destination contract (nil for contract creation)
-	Gas      uint64          // if 0, the call executes with near-infinite gas
-	GasPrice *big.Int        // wei <-> gas exchange ratio
-	Value    *big.Int        // amount of wei sent along with the call
-	Data     []byte          // input data, usually an ABI-encoded contract method invocation
+	From     common.Address
+	To       *common.Address
+	Gas      uint64
+	GasPrice *big.Int
+	Value    *big.Int
+	Data     []byte
 }
 
 type ContractCaller interface {
@@ -84,31 +65,19 @@ type ContractCaller interface {
 }
 
 type FilterQuery struct {
-	FromBlock *big.Int         // beginning of the queried range, nil means genesis block
-	ToBlock   *big.Int         // end of the range, nil means latest block
-	Addresses []common.Address // restricts matches to events created by specific contracts
+	BlockHash *common.Hash
+	FromBlock *big.Int
+	ToBlock   *big.Int
+	Addresses []common.Address
 
-	// The Topic list restricts matches to particular event topics. Each event has a list
-	// of topics. Topics matches a prefix of that list. An empty element slice matches any
-	// topic. Non-empty elements represent an alternative that matches any of the
-	// contained topics.
-	//
-	// Examples:
-	// {} or nil          matches any topic list
-	// {{A}}              matches topic A in first position
-	// {{}, {B}}          matches any topic in first position, B in second position
-	// {{A}, {B}}         matches topic A in first position, B in second position
-	// {{A, B}}, {C, D}}  matches topic (A OR B) in first position, (C OR D) in second position
 	Topics [][]common.Hash
 }
 
-//
 type LogFilterer interface {
 	FilterLogs(ctx context.Context, q FilterQuery) ([]types.Log, error)
 	SubscribeFilterLogs(ctx context.Context, q FilterQuery, ch chan<- types.Log) (Subscription, error)
 }
 
-//
 type TransactionSender interface {
 	SendTransaction(ctx context.Context, tx *types.Transaction) error
 }

@@ -7,7 +7,7 @@ import (
 	"math/big"
 
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/params"
 )
 
@@ -45,9 +45,6 @@ func SignTx(tx *Transaction, s Signer, prv *ecdsa.PrivateKey) (*Transaction, err
 func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 	if sc := tx.from.Load(); sc != nil {
 		sigCache := sc.(sigCache)
-		// If the signer used to derive from in a previous
-		// call is not the same as used current, invalidate
-		// the cache.
 		if sigCache.signer.Equal(signer) {
 			return sigCache.from, nil
 		}
@@ -62,14 +59,9 @@ func Sender(signer Signer, tx *Transaction) (common.Address, error) {
 }
 
 type Signer interface {
-	// Sender returns the sender address of the transaction.
 	Sender(tx *Transaction) (common.Address, error)
-	// SignatureValues returns the raw R, S, V values corresponding to the
-	// given signature.
 	SignatureValues(tx *Transaction, sig []byte) (r, s, v *big.Int, err error)
-	// Hash returns the hash to be signed.
 	Hash(tx *Transaction) common.Hash
-	// Equal returns true if the given signer is the same as the receiver.
 	Equal(Signer) bool
 }
 
@@ -185,13 +177,11 @@ func recoverPlain(sighash common.Hash, R, S, Vb *big.Int, homestead bool) (commo
 	if !crypto.ValidateSignatureValues(V, R, S, homestead) {
 		return common.Address{}, ErrInvalidSig
 	}
-	// encode the snature in uncompressed format
 	r, s := R.Bytes(), S.Bytes()
 	sig := make([]byte, 65)
 	copy(sig[32-len(r):32], r)
 	copy(sig[64-len(s):64], s)
 	sig[64] = V
-	// recover the public key from the snature
 	pub, err := crypto.Ecrecover(sighash[:], sig)
 	if err != nil {
 		return common.Address{}, err
@@ -200,7 +190,7 @@ func recoverPlain(sighash common.Hash, R, S, Vb *big.Int, homestead bool) (commo
 		return common.Address{}, errors.New("invalid public key")
 	}
 	var addr common.Address
-	copy(addr[:], crypto.Keccak256(pub[1:])[6:])
+	copy(addr[:], crypto.Keccak256(pub[1:])[12:])
 	return addr, nil
 }
 

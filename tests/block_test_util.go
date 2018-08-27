@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -8,17 +7,17 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/common/math"
-	"github.com/5uwifi/canchain/consensus/canhash"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/kernel/vm"
-	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/lib/consensus/ethash"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
-	"github.com/5uwifi/canchain/basis/rlp"
 )
 
 type BlockTest struct {
@@ -44,6 +43,7 @@ type btBlock struct {
 	UncleHeaders []*btHeader
 }
 
+//go:generate gencodec -type btHeader -field-override btHeaderMarshaling -out gen_btheader.go
 
 type btHeader struct {
 	Bloom            types.Bloom
@@ -79,7 +79,6 @@ func (t *BlockTest) Run() error {
 		return UnsupportedForkError{t.json.Network}
 	}
 
-	// import pre accounts & construct test genesis block & state root
 	db := candb.NewMemDatabase()
 	gblock, err := t.genesis(config).Commit(db)
 	if err != nil {
@@ -92,7 +91,7 @@ func (t *BlockTest) Run() error {
 		return fmt.Errorf("genesis block state root does not match test: computed=%x, test=%x", gblock.Root().Bytes()[:6], t.json.Genesis.StateRoot[:6])
 	}
 
-	chain, err := kernel.NewBlockChain(db, nil, config, canhash.NewShared(), vm.Config{})
+	chain, err := kernel.NewBlockChain(db, nil, config, ethash.NewShared(), vm.Config{})
 	if err != nil {
 		return err
 	}
@@ -146,22 +145,20 @@ func (t *BlockTest) genesis(config *params.ChainConfig) *kernel.Genesis {
 */
 func (t *BlockTest) insertBlocks(blockchain *kernel.BlockChain) ([]btBlock, error) {
 	validBlocks := make([]btBlock, 0)
-	// insert the test blocks, which will execute all transactions
 	for _, b := range t.json.Blocks {
 		cb, err := b.decode()
 		if err != nil {
 			if b.BlockHeader == nil {
-				continue // OK - block is supposed to be invalid, continue with next block
+				continue
 			} else {
 				return nil, fmt.Errorf("Block RLP decoding failed when expected to succeed: %v", err)
 			}
 		}
-		// RLP decoding worked, try to insert into chain:
 		blocks := types.Blocks{cb}
 		i, err := blockchain.InsertChain(blocks)
 		if err != nil {
 			if b.BlockHeader == nil {
-				continue // OK - block is supposed to be invalid, continue with next block
+				continue
 			} else {
 				return nil, fmt.Errorf("Block #%v insertion into chain failed: %v", blocks[i].Number(), err)
 			}
@@ -170,7 +167,6 @@ func (t *BlockTest) insertBlocks(blockchain *kernel.BlockChain) ([]btBlock, erro
 			return nil, fmt.Errorf("Block insertion should have failed")
 		}
 
-		// validate RLP decoding by checking all values against test file JSON
 		if err = validateHeader(b.BlockHeader, cb.Header()); err != nil {
 			return nil, fmt.Errorf("Deserialised block header validation failed: %v", err)
 		}
@@ -229,9 +225,7 @@ func validateHeader(h *btHeader, h2 *types.Header) error {
 }
 
 func (t *BlockTest) validatePostState(statedb *state.StateDB) error {
-	// validate post state accounts in test file against what we have in state db
 	for addr, acct := range t.json.Post {
-		// address is indirectly verified by the other fields, as it's the db key
 		code2 := statedb.GetCode(addr)
 		balance2 := statedb.GetBalance(addr)
 		nonce2 := statedb.GetNonce(addr)
@@ -249,16 +243,10 @@ func (t *BlockTest) validatePostState(statedb *state.StateDB) error {
 }
 
 func (t *BlockTest) validateImportedHeaders(cm *kernel.BlockChain, validBlocks []btBlock) error {
-	// to get constant lookup when verifying block headers by hash (some tests have many blocks)
 	bmap := make(map[common.Hash]btBlock, len(t.json.Blocks))
 	for _, b := range validBlocks {
 		bmap[b.BlockHeader.Hash] = b
 	}
-	// iterate over blocks backwards from HEAD and validate imported
-	// headers vs test file. some tests have reorgs, and we import
-	// block-by-block, so we can only validate imported headers after
-	// all blocks have been processed by BlockChain, as they may not
-	// be part of the longest chain until last block is imported.
 	for b := cm.CurrentBlock(); b != nil && b.NumberU64() != 0; b = cm.GetBlockByHash(b.Header().ParentHash) {
 		if err := validateHeader(bmap[b.Hash()].BlockHeader, b.Header()); err != nil {
 			return fmt.Errorf("Imported block header validation failed: %v", err)

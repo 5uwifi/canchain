@@ -1,31 +1,14 @@
-// Copyright 2018 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 package rawdb
 
 import (
 	"math/big"
 	"testing"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/candb"
 )
 
-// Tests that positional lookup metadata can be stored and retrieved.
 func TestLookupStorage(t *testing.T) {
 	db := candb.NewMemDatabase()
 
@@ -36,13 +19,11 @@ func TestLookupStorage(t *testing.T) {
 
 	block := types.NewBlock(&types.Header{Number: big.NewInt(314)}, txs, nil, nil)
 
-	// Check that no transactions entries are in a pristine database
 	for i, tx := range txs {
 		if txn, _, _, _ := ReadTransaction(db, tx.Hash()); txn != nil {
 			t.Fatalf("tx #%d [%x]: non existent transaction returned: %v", i, tx.Hash(), txn)
 		}
 	}
-	// Insert all the transactions into the database, and verify contents
 	WriteBlock(db, block)
 	WriteTxLookupEntries(db, block)
 
@@ -58,7 +39,6 @@ func TestLookupStorage(t *testing.T) {
 			}
 		}
 	}
-	// Delete the transactions and check purge
 	for i, tx := range txs {
 		DeleteTxLookupEntry(db, tx.Hash())
 		if txn, _, _, _ := ReadTransaction(db, tx.Hash()); txn != nil {

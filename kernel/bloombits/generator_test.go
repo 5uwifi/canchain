@@ -8,10 +8,7 @@ import (
 	"github.com/5uwifi/canchain/kernel/types"
 )
 
-// Tests that batched bloom bits are correctly rotated from the input bloom
-// filters.
 func TestGenerator(t *testing.T) {
-	// Generate the input and the rotated output
 	var input, output [types.BloomBitLength][types.BloomByteLength]byte
 
 	for i := 0; i < types.BloomBitLength; i++ {
@@ -22,7 +19,6 @@ func TestGenerator(t *testing.T) {
 			output[types.BloomBitLength-1-j][i/8] |= bit << byte(7-i%8)
 		}
 	}
-	// Crunch the input through the generator and verify the result
 	gen, err := NewGenerator(types.BloomBitLength)
 	if err != nil {
 		t.Fatalf("failed to create bloombit generator: %v", err)

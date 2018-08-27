@@ -3,8 +3,8 @@ package state
 import (
 	"testing"
 
-	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/common"
 )
 
 var addr = common.BytesToAddress([]byte("test"))

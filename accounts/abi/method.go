@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 type Method struct {
@@ -16,10 +16,8 @@ type Method struct {
 
 func (method Method) Sig() string {
 	types := make([]string, len(method.Inputs))
-	i := 0
-	for _, input := range method.Inputs {
+	for i, input := range method.Inputs {
 		types[i] = input.Type.String()
-		i++
 	}
 	return fmt.Sprintf("%v(%v)", method.Name, strings.Join(types, ","))
 }

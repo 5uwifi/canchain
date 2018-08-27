@@ -19,7 +19,6 @@ type Contract struct {
 	Info ContractInfo `json:"info"`
 }
 
-//
 type ContractInfo struct {
 	Source          string      `json:"source"`
 	Language        string      `json:"language"`
@@ -37,7 +36,6 @@ type Solidity struct {
 	Major, Minor, Patch        int
 }
 
-// --combined-output format
 type solcOutput struct {
 	Contracts map[string]struct {
 		Bin, Abi, Devdoc, Userdoc, Metadata string
@@ -48,7 +46,7 @@ type solcOutput struct {
 func (s *Solidity) makeArgs() []string {
 	p := []string{
 		"--combined-json", "bin,abi,userdoc,devdoc",
-		"--optimize", // code optimizer switched on
+		"--optimize",
 	}
 	if s.Major > 0 || s.Minor > 4 || s.Patch > 6 {
 		p[1] += ",metadata"
@@ -126,18 +124,14 @@ func (s *Solidity) run(cmd *exec.Cmd, source string) (map[string]*Contract, erro
 	return ParseCombinedJSON(stdout.Bytes(), source, s.Version, s.Version, strings.Join(s.makeArgs(), " "))
 }
 
-//
-//
 func ParseCombinedJSON(combinedJSON []byte, source string, languageVersion string, compilerVersion string, compilerOptions string) (map[string]*Contract, error) {
 	var output solcOutput
 	if err := json.Unmarshal(combinedJSON, &output); err != nil {
 		return nil, err
 	}
 
-	// Compilation succeeded, assemble and return the contracts.
 	contracts := make(map[string]*Contract)
 	for name, info := range output.Contracts {
-		// Parse the individual compilation results.
 		var abi interface{}
 		if err := json.Unmarshal([]byte(info.Abi), &abi); err != nil {
 			return nil, fmt.Errorf("solc: error reading abi definition (%v)", err)

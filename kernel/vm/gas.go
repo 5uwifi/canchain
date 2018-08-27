@@ -1,4 +1,3 @@
-
 package vm
 
 import (
@@ -20,14 +19,10 @@ const (
 	GasContractByte uint64 = 200
 )
 
-//
 func callGas(gasTable params.GasTable, availableGas, base uint64, callCost *big.Int) (uint64, error) {
 	if gasTable.CreateBySuicide > 0 {
 		availableGas = availableGas - base
 		gas := availableGas - availableGas/64
-		// If the bit length exceeds 64 bit we know that the newly calculated "gas" for EIP150
-		// is smaller than the requested amount. Therefor we return the new gas instead
-		// of returning an error.
 		if callCost.BitLen() > 64 || gas < callCost.Uint64() {
 			return gas, nil
 		}

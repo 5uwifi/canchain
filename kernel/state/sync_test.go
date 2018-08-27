@@ -5,13 +5,12 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
 	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/trie"
+	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/trie"
 )
 
-// testAccount is the data associated with an account used by the state tests.
 type testAccount struct {
 	address common.Address
 	balance *big.Int
@@ -19,13 +18,10 @@ type testAccount struct {
 	code    []byte
 }
 
-// makeTestState create a sample test state to test node-wise reconstruction.
 func makeTestState() (Database, common.Hash, []*testAccount) {
-	// Create an empty state
 	db := NewDatabase(candb.NewMemDatabase())
 	state, _ := New(common.Hash{}, db)
 
-	// Fill it with some arbitrary data
 	accounts := []*testAccount{}
 	for i := byte(0); i < 96; i++ {
 		obj := state.GetOrNewStateObject(common.BytesToAddress([]byte{i}))
@@ -46,14 +42,10 @@ func makeTestState() (Database, common.Hash, []*testAccount) {
 	}
 	root, _ := state.Commit(false)
 
-	// Return the generated state
 	return db, root, accounts
 }
 
-// checkStateAccounts cross references a reconstructed state with an expected
-// account array.
 func checkStateAccounts(t *testing.T, db candb.Database, root common.Hash, accounts []*testAccount) {
-	// Check root availability and state contents
 	state, err := New(root, NewDatabase(db))
 	if err != nil {
 		t.Fatalf("failed to create state trie at %x: %v", root, err)
@@ -74,10 +66,9 @@ func checkStateAccounts(t *testing.T, db candb.Database, root common.Hash, accou
 	}
 }
 
-// checkTrieConsistency checks that all nodes in a (sub-)trie are indeed present.
 func checkTrieConsistency(db candb.Database, root common.Hash) error {
 	if v, _ := db.Get(root[:]); v == nil {
-		return nil // Consider a non existent state consistent.
+		return nil
 	}
 	trie, err := trie.New(root, trie.NewDatabase(db))
 	if err != nil {
@@ -89,11 +80,9 @@ func checkTrieConsistency(db candb.Database, root common.Hash) error {
 	return it.Error()
 }
 
-// checkStateConsistency checks that all data of a state root is present.
 func checkStateConsistency(db candb.Database, root common.Hash) error {
-	// Create and iterate a state trie rooted in a sub-node
 	if _, err := db.Get(root.Bytes()); err != nil {
-		return nil // Consider a non existent state consistent.
+		return nil
 	}
 	state, err := New(root, NewDatabase(db))
 	if err != nil {
@@ -105,7 +94,6 @@ func checkStateConsistency(db candb.Database, root common.Hash) error {
 	return it.Error
 }
 
-// Tests that an empty state is not scheduled for syncing.
 func TestEmptyStateSync(t *testing.T) {
 	empty := common.HexToHash("56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421")
 	if req := NewStateSync(empty, candb.NewMemDatabase()).Missing(1); len(req) != 0 {
@@ -113,16 +101,12 @@ func TestEmptyStateSync(t *testing.T) {
 	}
 }
 
-// Tests that given a root hash, a state can sync iteratively on a single thread,
-// requesting retrieval tasks and returning all of them in one go.
 func TestIterativeStateSyncIndividual(t *testing.T) { testIterativeStateSync(t, 1) }
 func TestIterativeStateSyncBatched(t *testing.T)    { testIterativeStateSync(t, 100) }
 
 func testIterativeStateSync(t *testing.T, batch int) {
-	// Create a random state to copy
 	srcDb, srcRoot, srcAccounts := makeTestState()
 
-	// Create a destination state and sync with the scheduler
 	dstDb := candb.NewMemDatabase()
 	sched := NewStateSync(srcRoot, dstDb)
 
@@ -144,23 +128,17 @@ func testIterativeStateSync(t *testing.T, batch int) {
 		}
 		queue = append(queue[:0], sched.Missing(batch)...)
 	}
-	// Cross check that the two states are in sync
 	checkStateAccounts(t, dstDb, srcRoot, srcAccounts)
 }
 
-// Tests that the trie scheduler can correctly reconstruct the state even if only
-// partial results are returned, and the others sent only later.
 func TestIterativeDelayedStateSync(t *testing.T) {
-	// Create a random state to copy
 	srcDb, srcRoot, srcAccounts := makeTestState()
 
-	// Create a destination state and sync with the scheduler
 	dstDb := candb.NewMemDatabase()
 	sched := NewStateSync(srcRoot, dstDb)
 
 	queue := append([]common.Hash{}, sched.Missing(0)...)
 	for len(queue) > 0 {
-		// Sync only half of the scheduled nodes
 		results := make([]trie.SyncResult, len(queue)/2+1)
 		for i, hash := range queue[:len(results)] {
 			data, err := srcDb.TrieDB().Node(hash)
@@ -177,21 +155,15 @@ func TestIterativeDelayedStateSync(t *testing.T) {
 		}
 		queue = append(queue[len(results):], sched.Missing(0)...)
 	}
-	// Cross check that the two states are in sync
 	checkStateAccounts(t, dstDb, srcRoot, srcAccounts)
 }
 
-// Tests that given a root hash, a trie can sync iteratively on a single thread,
-// requesting retrieval tasks and returning all of them in one go, however in a
-// random order.
 func TestIterativeRandomStateSyncIndividual(t *testing.T) { testIterativeRandomStateSync(t, 1) }
 func TestIterativeRandomStateSyncBatched(t *testing.T)    { testIterativeRandomStateSync(t, 100) }
 
 func testIterativeRandomStateSync(t *testing.T, batch int) {
-	// Create a random state to copy
 	srcDb, srcRoot, srcAccounts := makeTestState()
 
-	// Create a destination state and sync with the scheduler
 	dstDb := candb.NewMemDatabase()
 	sched := NewStateSync(srcRoot, dstDb)
 
@@ -200,7 +172,6 @@ func testIterativeRandomStateSync(t *testing.T, batch int) {
 		queue[hash] = struct{}{}
 	}
 	for len(queue) > 0 {
-		// Fetch all the queued nodes in a random order
 		results := make([]trie.SyncResult, 0, len(queue))
 		for hash := range queue {
 			data, err := srcDb.TrieDB().Node(hash)
@@ -209,7 +180,6 @@ func testIterativeRandomStateSync(t *testing.T, batch int) {
 			}
 			results = append(results, trie.SyncResult{Hash: hash, Data: data})
 		}
-		// Feed the retrieved results back and queue new tasks
 		if _, index, err := sched.Process(results); err != nil {
 			t.Fatalf("failed to process result #%d: %v", index, err)
 		}
@@ -221,17 +191,12 @@ func testIterativeRandomStateSync(t *testing.T, batch int) {
 			queue[hash] = struct{}{}
 		}
 	}
-	// Cross check that the two states are in sync
 	checkStateAccounts(t, dstDb, srcRoot, srcAccounts)
 }
 
-// Tests that the trie scheduler can correctly reconstruct the state even if only
-// partial results are returned (Even those randomly), others sent only later.
 func TestIterativeRandomDelayedStateSync(t *testing.T) {
-	// Create a random state to copy
 	srcDb, srcRoot, srcAccounts := makeTestState()
 
-	// Create a destination state and sync with the scheduler
 	dstDb := candb.NewMemDatabase()
 	sched := NewStateSync(srcRoot, dstDb)
 
@@ -240,7 +205,6 @@ func TestIterativeRandomDelayedStateSync(t *testing.T) {
 		queue[hash] = struct{}{}
 	}
 	for len(queue) > 0 {
-		// Sync only half of the scheduled nodes, even those in random order
 		results := make([]trie.SyncResult, 0, len(queue)/2+1)
 		for hash := range queue {
 			delete(queue, hash)
@@ -255,7 +219,6 @@ func TestIterativeRandomDelayedStateSync(t *testing.T) {
 				break
 			}
 		}
-		// Feed the retrieved results back and queue new tasks
 		if _, index, err := sched.Process(results); err != nil {
 			t.Fatalf("failed to process result #%d: %v", index, err)
 		}
@@ -266,26 +229,20 @@ func TestIterativeRandomDelayedStateSync(t *testing.T) {
 			queue[hash] = struct{}{}
 		}
 	}
-	// Cross check that the two states are in sync
 	checkStateAccounts(t, dstDb, srcRoot, srcAccounts)
 }
 
-// Tests that at any point in time during a sync, only complete sub-tries are in
-// the database.
 func TestIncompleteStateSync(t *testing.T) {
-	// Create a random state to copy
 	srcDb, srcRoot, srcAccounts := makeTestState()
 
 	checkTrieConsistency(srcDb.TrieDB().DiskDB().(candb.Database), srcRoot)
 
-	// Create a destination state and sync with the scheduler
 	dstDb := candb.NewMemDatabase()
 	sched := NewStateSync(srcRoot, dstDb)
 
 	added := []common.Hash{}
 	queue := append([]common.Hash{}, sched.Missing(1)...)
 	for len(queue) > 0 {
-		// Fetch a batch of state nodes
 		results := make([]trie.SyncResult, len(queue))
 		for i, hash := range queue {
 			data, err := srcDb.TrieDB().Node(hash)
@@ -294,7 +251,6 @@ func TestIncompleteStateSync(t *testing.T) {
 			}
 			results[i] = trie.SyncResult{Hash: hash, Data: data}
 		}
-		// Process each of the state nodes
 		if _, index, err := sched.Process(results); err != nil {
 			t.Fatalf("failed to process result #%d: %v", index, err)
 		}
@@ -304,24 +260,19 @@ func TestIncompleteStateSync(t *testing.T) {
 		for _, result := range results {
 			added = append(added, result.Hash)
 		}
-		// Check that all known sub-tries added so far are complete or missing entirely.
 	checkSubtries:
 		for _, hash := range added {
 			for _, acc := range srcAccounts {
 				if hash == crypto.Keccak256Hash(acc.code) {
-					continue checkSubtries // skip trie check of code nodes.
+					continue checkSubtries
 				}
 			}
-			// Can't use checkStateConsistency here because subtrie keys may have odd
-			// length and crash in LeafKey.
 			if err := checkTrieConsistency(dstDb, hash); err != nil {
 				t.Fatalf("state inconsistent: %v", err)
 			}
 		}
-		// Fetch the next batch to retrieve
 		queue = append(queue[:0], sched.Missing(1)...)
 	}
-	// Sanity check that removing any node from the database is detected
 	for _, node := range added[1:] {
 		key := node.Bytes()
 		value, _ := dstDb.Get(key)

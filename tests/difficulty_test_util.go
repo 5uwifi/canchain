@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -7,11 +6,12 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
-	"github.com/5uwifi/canchain/consensus/canhash"
 	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/lib/consensus/ethash"
 	"github.com/5uwifi/canchain/params"
 )
 
+//go:generate gencodec -type DifficultyTest -field-override difficultyTestMarshaling -out gen_difficultytest.go
 
 type DifficultyTest struct {
 	ParentTimestamp    *big.Int    `json:"parentTimestamp"`
@@ -40,7 +40,7 @@ func (test *DifficultyTest) Run(config *params.ChainConfig) error {
 		UncleHash:  test.UncleHash,
 	}
 
-	actual := canhash.CalcDifficulty(config, test.CurrentTimestamp.Uint64(), parent)
+	actual := ethash.CalcDifficulty(config, test.CurrentTimestamp.Uint64(), parent)
 	exp := test.CurrentDifficulty
 
 	if actual.Cmp(exp) != 0 {

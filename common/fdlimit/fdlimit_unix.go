@@ -5,12 +5,10 @@ package fdlimit
 import "syscall"
 
 func Raise(max uint64) error {
-	// Get the current limit
 	var limit syscall.Rlimit
 	if err := syscall.Getrlimit(syscall.RLIMIT_NOFILE, &limit); err != nil {
 		return err
 	}
-	// Try to update the limit to the max allowance
 	limit.Cur = limit.Max
 	if limit.Cur > max {
 		limit.Cur = max

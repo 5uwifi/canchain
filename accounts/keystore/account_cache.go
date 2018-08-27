@@ -11,10 +11,10 @@ import (
 	"sync"
 	"time"
 
+	mapset "github.com/deckarep/golang-set"
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/log4j"
-	"gopkg.in/fatih/set.v0"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 const minReloadInterval = 2 * time.Second
@@ -57,7 +57,7 @@ func newAccountCache(keydir string) (*accountCache, chan struct{}) {
 		keydir: keydir,
 		byAddr: make(map[common.Address][]accounts.Account),
 		notify: make(chan struct{}, 1),
-		fileC:  fileCache{all: set.NewNonTS()},
+		fileC:  fileCache{all: mapset.NewThreadUnsafeSet()},
 	}
 	ac.watcher = newWatcher(ac)
 	return ac, ac.notify
@@ -87,7 +87,6 @@ func (ac *accountCache) add(newAccount accounts.Account) {
 	if i < len(ac.all) && ac.all[i] == newAccount {
 		return
 	}
-	// newAccount is not in the cache.
 	ac.all = append(ac.all, accounts.Account{})
 	copy(ac.all[i+1:], ac.all[i:])
 	ac.all[i] = newAccount
@@ -132,13 +131,11 @@ func removeAccount(slice []accounts.Account, elem accounts.Account) []accounts.A
 }
 
 func (ac *accountCache) find(a accounts.Account) (accounts.Account, error) {
-	// Limit search to address candidates if possible.
 	matches := ac.all
 	if (a.Address != common.Address{}) {
 		matches = ac.byAddr[a.Address]
 	}
 	if a.URL.Path != "" {
-		// If only the basename is specified, complete the path.
 		if !strings.ContainsRune(a.URL.Path, filepath.Separator) {
 			a.URL.Path = filepath.Join(ac.keydir, a.URL.Path)
 		}
@@ -169,7 +166,7 @@ func (ac *accountCache) maybeReload() {
 
 	if ac.watcher.running {
 		ac.mu.Unlock()
-		return // A watcher is running and will keep the cache up-to-date.
+		return
 	}
 	if ac.throttle == nil {
 		ac.throttle = time.NewTimer(0)
@@ -178,10 +175,9 @@ func (ac *accountCache) maybeReload() {
 		case <-ac.throttle.C:
 		default:
 			ac.mu.Unlock()
-			return // The cache was reloaded recently.
+			return
 		}
 	}
-	// No watcher running, start it.
 	ac.watcher.start()
 	ac.throttle.Reset(minReloadInterval)
 	ac.mu.Unlock()
@@ -202,16 +198,14 @@ func (ac *accountCache) close() {
 }
 
 func (ac *accountCache) scanAccounts() error {
-	// Scan the entire folder metadata for file changes
 	creates, deletes, updates, err := ac.fileC.scan(ac.keydir)
 	if err != nil {
 		log4j.Debug("Failed to reload keystore contents", "err", err)
 		return err
 	}
-	if creates.Size() == 0 && deletes.Size() == 0 && updates.Size() == 0 {
+	if creates.Cardinality() == 0 && deletes.Cardinality() == 0 && updates.Cardinality() == 0 {
 		return nil
 	}
-	// Create a helper method to scan the contents of the key files
 	var (
 		buf = new(bufio.Reader)
 		key struct {
@@ -226,7 +220,6 @@ func (ac *accountCache) scanAccounts() error {
 		}
 		defer fd.Close()
 		buf.Reset(fd)
-		// Parse the address.
 		key.Address = ""
 		err = json.NewDecoder(buf).Decode(&key)
 		addr := common.HexToAddress(key.Address)
@@ -240,18 +233,17 @@ func (ac *accountCache) scanAccounts() error {
 		}
 		return nil
 	}
-	// Process all the file diffs
 	start := time.Now()
 
-	for _, p := range creates.List() {
+	for _, p := range creates.ToSlice() {
 		if a := readAccount(p.(string)); a != nil {
 			ac.add(*a)
 		}
 	}
-	for _, p := range deletes.List() {
+	for _, p := range deletes.ToSlice() {
 		ac.deleteByFile(p.(string))
 	}
-	for _, p := range updates.List() {
+	for _, p := range updates.ToSlice() {
 		path := p.(string)
 		ac.deleteByFile(path)
 		if a := readAccount(path); a != nil {

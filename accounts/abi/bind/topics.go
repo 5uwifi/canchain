@@ -8,7 +8,7 @@ import (
 
 	"github.com/5uwifi/canchain/accounts/abi"
 	"github.com/5uwifi/canchain/common"
-	"github.com/5uwifi/canchain/basis/crypto"
+	"github.com/5uwifi/canchain/lib/crypto"
 )
 
 func makeTopics(query ...[]interface{}) ([][]common.Hash, error) {
@@ -17,7 +17,6 @@ func makeTopics(query ...[]interface{}) ([][]common.Hash, error) {
 		for _, rule := range filter {
 			var topic common.Hash
 
-			// Try to generate the topic based on simple types
 			switch rule := rule.(type) {
 			case common.Hash:
 				copy(topic[:], rule[:])
@@ -62,7 +61,6 @@ func makeTopics(query ...[]interface{}) ([][]common.Hash, error) {
 				copy(topic[:], hash[:])
 
 			default:
-				// Attempt to generate the topic from funky types
 				val := reflect.ValueOf(rule)
 
 				switch {
@@ -85,20 +83,16 @@ var (
 	reflectBigInt  = reflect.TypeOf(new(big.Int))
 )
 
-//
 func parseTopics(out interface{}, fields abi.Arguments, topics []common.Hash) error {
-	// Sanity check that the fields and topics match up
 	if len(fields) != len(topics) {
 		return errors.New("topic/field count mismatch")
 	}
-	// Iterate over all the fields and reconstruct them from topics
 	for _, arg := range fields {
 		if !arg.Indexed {
 			return errors.New("non-indexed field in topic reconstruction")
 		}
 		field := reflect.ValueOf(out).Elem().FieldByName(capitalise(arg.Name))
 
-		// Try to parse the topic back into the fields based on primitive types
 		switch field.Kind() {
 		case reflect.Bool:
 			if topics[0][common.HashLength-1] == 1 {
@@ -137,9 +131,8 @@ func parseTopics(out interface{}, fields abi.Arguments, topics []common.Hash) er
 			field.Set(reflect.ValueOf(num.Uint64()))
 
 		default:
-			// Ran out of plain primitive types, try custom types
 			switch field.Type() {
-			case reflectHash: // Also covers all dynamic types
+			case reflectHash:
 				field.Set(reflect.ValueOf(topics[0]))
 
 			case reflectAddress:
@@ -152,7 +145,6 @@ func parseTopics(out interface{}, fields abi.Arguments, topics []common.Hash) er
 				field.Set(reflect.ValueOf(num))
 
 			default:
-				// Ran out of custom types, try the crazies
 				switch {
 				case arg.Type.T == abi.FixedBytesTy:
 					reflect.Copy(field, reflect.ValueOf(topics[0][common.HashLength-arg.Type.Size:]))

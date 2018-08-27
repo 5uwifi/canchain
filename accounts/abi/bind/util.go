@@ -7,7 +7,7 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 func WaitMined(ctx context.Context, b DeployBackend, tx *types.Transaction) (*types.Receipt, error) {
@@ -25,7 +25,6 @@ func WaitMined(ctx context.Context, b DeployBackend, tx *types.Transaction) (*ty
 		} else {
 			logger.Trace("Transaction not yet mined")
 		}
-		// Wait for the next round.
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -45,9 +44,6 @@ func WaitDeployed(ctx context.Context, b DeployBackend, tx *types.Transaction) (
 	if receipt.ContractAddress == (common.Address{}) {
 		return common.Address{}, fmt.Errorf("zero address")
 	}
-	// Check that code has indeed been deployed at the address.
-	// This matters on pre-Homestead chains: OOG in the constructor
-	// could leave an empty account behind.
 	code, err := b.CodeAt(ctx, receipt.ContractAddress, nil)
 	if err == nil && len(code) == 0 {
 		err = ErrNoCodeAfterDeploy

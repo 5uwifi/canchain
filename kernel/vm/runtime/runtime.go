@@ -1,4 +1,3 @@
-
 package runtime
 
 import (
@@ -6,11 +5,11 @@ import (
 	"math/big"
 	"time"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/vm"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/params"
 )
 
@@ -36,6 +35,8 @@ func setDefaults(cfg *Config) {
 		cfg.ChainConfig = &params.ChainConfig{
 			ChainID:        big.NewInt(1),
 			HomesteadBlock: new(big.Int),
+			DAOForkBlock:   new(big.Int),
+			DAOForkSupport: false,
 			EIP150Block:    new(big.Int),
 			EIP155Block:    new(big.Int),
 			EIP158Block:    new(big.Int),
@@ -67,7 +68,6 @@ func setDefaults(cfg *Config) {
 	}
 }
 
-//
 func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
 	if cfg == nil {
 		cfg = new(Config)
@@ -83,9 +83,7 @@ func Execute(code, input []byte, cfg *Config) ([]byte, *state.StateDB, error) {
 		sender  = vm.AccountRef(cfg.Origin)
 	)
 	cfg.State.CreateAccount(address)
-	// set the receiver's (the executing contract) code for execution.
 	cfg.State.SetCode(address, code)
-	// Call the code with the given configuration.
 	ret, _, err := vmenv.Call(
 		sender,
 		common.BytesToAddress([]byte("contract")),
@@ -111,7 +109,6 @@ func Create(input []byte, cfg *Config) ([]byte, common.Address, uint64, error) {
 		sender = vm.AccountRef(cfg.Origin)
 	)
 
-	// Call the code with the given configuration.
 	code, address, leftOverGas, err := vmenv.Create(
 		sender,
 		input,
@@ -121,14 +118,12 @@ func Create(input []byte, cfg *Config) ([]byte, common.Address, uint64, error) {
 	return code, address, leftOverGas, err
 }
 
-//
 func Call(address common.Address, input []byte, cfg *Config) ([]byte, uint64, error) {
 	setDefaults(cfg)
 
 	vmenv := NewEnv(cfg)
 
 	sender := cfg.State.GetOrNewStateObject(cfg.Origin)
-	// Call the code with the given configuration.
 	ret, leftOverGas, err := vmenv.Call(
 		sender,
 		address,

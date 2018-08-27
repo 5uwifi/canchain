@@ -1,4 +1,3 @@
-
 package asm
 
 import (
@@ -25,23 +24,19 @@ func NewInstructionIterator(code []byte) *instructionIterator {
 
 func (it *instructionIterator) Next() bool {
 	if it.error != nil || uint64(len(it.code)) <= it.pc {
-		// We previously reached an error or the end.
 		return false
 	}
 
 	if it.started {
-		// Since the iteration has been already started we move to the next instruction.
 		if it.arg != nil {
 			it.pc += uint64(len(it.arg))
 		}
 		it.pc++
 	} else {
-		// We start the iteration from the first instruction.
 		it.started = true
 	}
 
 	if uint64(len(it.code)) <= it.pc {
-		// We reached the end.
 		return false
 	}
 

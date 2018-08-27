@@ -1,4 +1,3 @@
-
 package node
 
 import (
@@ -7,15 +6,16 @@ import (
 	"path/filepath"
 	"runtime"
 
-	"github.com/5uwifi/canchain/basis/p2p"
-	"github.com/5uwifi/canchain/basis/p2p/nat"
+	"github.com/5uwifi/canchain/lib/p2p"
+	"github.com/5uwifi/canchain/lib/p2p/nat"
+	"github.com/5uwifi/canchain/rpc"
 )
 
 const (
-	DefaultHTTPHost = "localhost" // Default host interface for the HTTP RPC server
-	DefaultHTTPPort = 8208        // Default TCP port for the HTTP RPC server
-	DefaultWSHost   = "localhost" // Default host interface for the websocket RPC server
-	DefaultWSPort   = 8218        // Default TCP port for the websocket RPC server
+	DefaultHTTPHost = "localhost"
+	DefaultHTTPPort = 8042
+	DefaultWSHost   = "localhost"
+	DefaultWSPort   = 8043
 )
 
 var DefaultConfig = Config{
@@ -23,6 +23,7 @@ var DefaultConfig = Config{
 	HTTPPort:         DefaultHTTPPort,
 	HTTPModules:      []string{"net", "web3"},
 	HTTPVirtualHosts: []string{"localhost"},
+	HTTPTimeouts:     rpc.DefaultHTTPTimeouts,
 	WSPort:           DefaultWSPort,
 	WSModules:        []string{"net", "web3"},
 	P2P: p2p.Config{
@@ -33,7 +34,6 @@ var DefaultConfig = Config{
 }
 
 func DefaultDataDir() string {
-	// Try to place the data folder in the user's home dir
 	home := homeDir()
 	if home != "" {
 		if runtime.GOOS == "darwin" {
@@ -44,7 +44,6 @@ func DefaultDataDir() string {
 			return filepath.Join(home, ".canchain")
 		}
 	}
-	// As we cannot guess a stable location, return empty and handle later
 	return ""
 }
 

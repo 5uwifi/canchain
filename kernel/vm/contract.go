@@ -10,20 +10,16 @@ type ContractRef interface {
 	Address() common.Address
 }
 
-//
 type AccountRef common.Address
 
 func (ar AccountRef) Address() common.Address { return (common.Address)(ar) }
 
 type Contract struct {
-	// CallerAddress is the result of the caller which initialised this
-	// contract. However when the "call method" is delegated this value
-	// needs to be initialised to that of the caller's caller.
 	CallerAddress common.Address
 	caller        ContractRef
 	self          ContractRef
 
-	jumpdests destinations // result of JUMPDEST analysis.
+	jumpdests destinations
 
 	Code     []byte
 	CodeHash common.Hash
@@ -42,16 +38,12 @@ func NewContract(caller ContractRef, object ContractRef, value *big.Int, gas uin
 	c := &Contract{CallerAddress: caller.Address(), caller: caller, self: object, Args: nil}
 
 	if parent, ok := caller.(*Contract); ok {
-		// Reuse JUMPDEST analysis from parent context if available.
 		c.jumpdests = parent.jumpdests
 	} else {
 		c.jumpdests = make(destinations)
 	}
 
-	// Gas should be a pointer so it can safely be reduced through the run
-	// This pointer will be off the state transition
 	c.Gas = gas
-	// ensures a value is set
 	c.value = value
 
 	return c
@@ -59,8 +51,6 @@ func NewContract(caller ContractRef, object ContractRef, value *big.Int, gas uin
 
 func (c *Contract) AsDelegate() *Contract {
 	c.DelegateCall = true
-	// NOTE: caller must, at all times be a contract. It should never happen
-	// that caller is something other than a Contract.
 	parent := c.caller.(*Contract)
 	c.CallerAddress = parent.CallerAddress
 	c.value = parent.value
@@ -80,7 +70,6 @@ func (c *Contract) GetByte(n uint64) byte {
 	return 0
 }
 
-//
 func (c *Contract) Caller() common.Address {
 	return c.CallerAddress
 }

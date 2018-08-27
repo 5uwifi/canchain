@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -8,6 +7,7 @@ import (
 	"math/big"
 	"strings"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/common/math"
@@ -15,11 +15,10 @@ import (
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/kernel/vm"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/crypto/sha3"
-	"github.com/5uwifi/canchain/candb"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/crypto/sha3"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
-	"github.com/5uwifi/canchain/basis/rlp"
 )
 
 type StateTest struct {
@@ -53,6 +52,7 @@ type stPostState struct {
 	}
 }
 
+//go:generate gencodec -type stEnv -field-override stEnvMarshaling -out gen_stenv.go
 
 type stEnv struct {
 	Coinbase   common.Address `json:"currentCoinbase"   gencodec:"required"`
@@ -70,6 +70,7 @@ type stEnvMarshaling struct {
 	Timestamp  math.HexOrDecimal64
 }
 
+//go:generate gencodec -type stTransaction -field-override stTransactionMarshaling -out gen_sttransaction.go
 
 type stTransaction struct {
 	GasPrice   *big.Int `json:"gasPrice"`
@@ -146,7 +147,6 @@ func MakePreState(db candb.Database, accounts kernel.GenesisAlloc) *state.StateD
 			statedb.SetState(addr, k, v)
 		}
 	}
-	// Commit and re-open to start with a clean state.
 	root, _ := statedb.Commit(false)
 	statedb, _ = state.New(root, sdb)
 	return statedb
@@ -165,7 +165,6 @@ func (t *StateTest) genesis(config *params.ChainConfig) *kernel.Genesis {
 }
 
 func (tx *stTransaction) toMessage(ps stPostState) (kernel.Message, error) {
-	// Derive sender from private key if present.
 	var from common.Address
 	if len(tx.PrivateKey) > 0 {
 		key, err := crypto.ToECDSA(tx.PrivateKey)
@@ -174,7 +173,6 @@ func (tx *stTransaction) toMessage(ps stPostState) (kernel.Message, error) {
 		}
 		from = crypto.PubkeyToAddress(key.PublicKey)
 	}
-	// Parse recipient if present.
 	var to *common.Address
 	if tx.To != "" {
 		to = new(common.Address)
@@ -183,7 +181,6 @@ func (tx *stTransaction) toMessage(ps stPostState) (kernel.Message, error) {
 		}
 	}
 
-	// Get values specific to this post state.
 	if ps.Indexes.Data > len(tx.Data) {
 		return nil, fmt.Errorf("tx data index %d out of bounds", ps.Indexes.Data)
 	}
@@ -196,7 +193,6 @@ func (tx *stTransaction) toMessage(ps stPostState) (kernel.Message, error) {
 	dataHex := tx.Data[ps.Indexes.Data]
 	valueHex := tx.Value[ps.Indexes.Value]
 	gasLimit := tx.GasLimit[ps.Indexes.Gas]
-	// Value, Data hex encoding is messy: https://github.com/ethereum/tests/issues/203
 	value := new(big.Int)
 	if valueHex != "0x" {
 		v, ok := math.ParseBig256(valueHex)

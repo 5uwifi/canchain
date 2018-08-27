@@ -6,11 +6,10 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 type headerRetriever interface {
-	// GetHeaderByNumber retrieves the canonical header associated with a block number.
 	GetHeaderByNumber(number uint64) *types.Header
 }
 
@@ -20,10 +19,10 @@ type unconfirmedBlock struct {
 }
 
 type unconfirmedBlocks struct {
-	chain  headerRetriever // Blockchain to verify canonical status through
-	depth  uint            // Depth after which to discard previous blocks
-	blocks *ring.Ring      // Block infos to allow canonical chain cross checks
-	lock   sync.RWMutex    // Protects the fields from concurrent access
+	chain  headerRetriever
+	depth  uint
+	blocks *ring.Ring
+	lock   sync.RWMutex
 }
 
 func newUnconfirmedBlocks(chain headerRetriever, depth uint) *unconfirmedBlocks {
@@ -34,16 +33,13 @@ func newUnconfirmedBlocks(chain headerRetriever, depth uint) *unconfirmedBlocks 
 }
 
 func (set *unconfirmedBlocks) Insert(index uint64, hash common.Hash) {
-	// If a new block was mined locally, shift out any old enough blocks
 	set.Shift(index)
 
-	// Create the new item as its own ring
 	item := ring.New(1)
 	item.Value = &unconfirmedBlock{
 		index: index,
 		hash:  hash,
 	}
-	// Set as the initial ring or append to the end
 	set.lock.Lock()
 	defer set.lock.Unlock()
 
@@ -52,7 +48,6 @@ func (set *unconfirmedBlocks) Insert(index uint64, hash common.Hash) {
 	} else {
 		set.blocks.Move(-1).Link(item)
 	}
-	// Display a log for the user to notify of a new mined block unconfirmed
 	log4j.Info("🔨 mined potential block", "number", index, "hash", hash)
 }
 
@@ -61,12 +56,10 @@ func (set *unconfirmedBlocks) Shift(height uint64) {
 	defer set.lock.Unlock()
 
 	for set.blocks != nil {
-		// Retrieve the next unconfirmed block and abort if too fresh
 		next := set.blocks.Value.(*unconfirmedBlock)
 		if next.index+uint64(set.depth) > height {
 			break
 		}
-		// Block seems to exceed depth allowance, check for canonical status
 		header := set.chain.GetHeaderByNumber(next.index)
 		switch {
 		case header == nil:
@@ -76,7 +69,6 @@ func (set *unconfirmedBlocks) Shift(height uint64) {
 		default:
 			log4j.Info("⑂ block  became a side fork", "number", next.index, "hash", next.hash)
 		}
-		// Drop the block out of the ring
 		if set.blocks.Value == set.blocks.Next().Value {
 			set.blocks = nil
 		} else {

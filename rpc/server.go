@@ -1,4 +1,3 @@
-
 package rpc
 
 import (
@@ -10,8 +9,8 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/5uwifi/canchain/basis/log4j"
-	"gopkg.in/fatih/set.v0"
+	mapset "github.com/deckarep/golang-set"
+	"github.com/5uwifi/canchain/lib/log4j"
 )
 
 const MetadataApi = "rpc"
@@ -19,22 +18,18 @@ const MetadataApi = "rpc"
 type CodecOption int
 
 const (
-	// OptionMethodInvocation is an indication that the codec supports RPC method calls
 	OptionMethodInvocation CodecOption = 1 << iota
 
-	// OptionSubscriptions is an indication that the codec suports RPC notifications
-	OptionSubscriptions = 1 << iota // support pub sub
+	OptionSubscriptions = 1 << iota
 )
 
 func NewServer() *Server {
 	server := &Server{
 		services: make(serviceRegistry),
-		codecs:   set.New(),
+		codecs:   mapset.NewSet(),
 		run:      1,
 	}
 
-	// register a default service which will provide meta information about the RPC service such as the services and
-	// methods it offers.
 	rpcService := &RPCService{server}
 	server.RegisterName(MetadataApi, rpcService)
 
@@ -71,11 +66,11 @@ func (s *Server) RegisterName(name string, rcvr interface{}) error {
 
 	methods, subscriptions := suitableCallbacks(rcvrVal, svc.typ)
 
-	// already a previous service register under given sname, merge methods/subscriptions
+	if len(methods) == 0 && len(subscriptions) == 0 {
+		return fmt.Errorf("Service %T doesn't have any suitable methods/subscriptions to expose", rcvr)
+	}
+
 	if regsvc, present := s.services[name]; present {
-		if len(methods) == 0 && len(subscriptions) == 0 {
-			return fmt.Errorf("Service %T doesn't have any suitable methods/subscriptions to expose", rcvr)
-		}
 		for _, m := range methods {
 			regsvc.callbacks[formatName(m.method.Name)] = m
 		}
@@ -88,15 +83,10 @@ func (s *Server) RegisterName(name string, rcvr interface{}) error {
 	svc.name = name
 	svc.callbacks, svc.subscriptions = methods, subscriptions
 
-	if len(svc.callbacks) == 0 && len(svc.subscriptions) == 0 {
-		return fmt.Errorf("Service %T doesn't have any suitable methods/subscriptions to expose", rcvr)
-	}
-
 	s.services[svc.name] = svc
 	return nil
 }
 
-//
 func (s *Server) serveRequest(ctx context.Context, codec ServerCodec, singleShot bool, options CodecOption) error {
 	var pend sync.WaitGroup
 
@@ -112,40 +102,31 @@ func (s *Server) serveRequest(ctx context.Context, codec ServerCodec, singleShot
 		s.codecsMu.Unlock()
 	}()
 
-	//	ctx, cancel := context.WithCancel(context.Background())
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	// if the codec supports notification include a notifier that callbacks can use
-	// to send notification to clients. It is tied to the codec/connection. If the
-	// connection is closed the notifier will stop and cancels all active subscriptions.
 	if options&OptionSubscriptions == OptionSubscriptions {
 		ctx = context.WithValue(ctx, notifierKey{}, newNotifier(codec))
 	}
 	s.codecsMu.Lock()
-	if atomic.LoadInt32(&s.run) != 1 { // server stopped
+	if atomic.LoadInt32(&s.run) != 1 {
 		s.codecsMu.Unlock()
 		return &shutdownError{}
 	}
 	s.codecs.Add(codec)
 	s.codecsMu.Unlock()
 
-	// test if the server is ordered to stop
 	for atomic.LoadInt32(&s.run) == 1 {
 		reqs, batch, err := s.readRequest(codec)
 		if err != nil {
-			// If a parsing error occurred, send an error
 			if err.Error() != "EOF" {
 				log4j.Debug(fmt.Sprintf("read error %v\n", err))
 				codec.Write(codec.CreateErrorResponse(nil, err))
 			}
-			// Error or end of stream, wait for requests and tear down
 			pend.Wait()
 			return nil
 		}
 
-		// check if server is ordered to shutdown and return an error
-		// telling the client that his request failed.
 		if atomic.LoadInt32(&s.run) != 1 {
 			err = &shutdownError{}
 			if batch {
@@ -159,7 +140,6 @@ func (s *Server) serveRequest(ctx context.Context, codec ServerCodec, singleShot
 			}
 			return nil
 		}
-		// If a single shot request is executing, run and return immediately
 		if singleShot {
 			if batch {
 				s.execBatch(ctx, codec, reqs)
@@ -168,7 +148,6 @@ func (s *Server) serveRequest(ctx context.Context, codec ServerCodec, singleShot
 			}
 			return nil
 		}
-		// For multi-shot connections, start a goroutine to serve and loop back
 		pend.Add(1)
 
 		go func(reqs []*serverRequest, batch bool) {
@@ -205,12 +184,11 @@ func (s *Server) Stop() {
 }
 
 func (s *Server) createSubscription(ctx context.Context, c ServerCodec, req *serverRequest) (ID, error) {
-	// subscription have as first argument the context following optional arguments
 	args := []reflect.Value{req.callb.rcvr, reflect.ValueOf(ctx)}
 	args = append(args, req.args...)
 	reply := req.callb.method.Func.Call(args)
 
-	if !reply[1].IsNil() { // subscription creation failed
+	if !reply[1].IsNil() {
 		return "", reply[1].Interface().(error)
 	}
 
@@ -222,10 +200,10 @@ func (s *Server) handle(ctx context.Context, codec ServerCodec, req *serverReque
 		return codec.CreateErrorResponse(&req.id, req.err), nil
 	}
 
-	if req.isUnsubscribe { // cancel subscription, first param must be the subscription id
+	if req.isUnsubscribe {
 		if len(req.args) >= 1 && req.args[0].Kind() == reflect.String {
 			notifier, supported := NotifierFromContext(ctx)
-			if !supported { // interface doesn't support subscriptions (e.g. http)
+			if !supported {
 				return codec.CreateErrorResponse(&req.id, &callbackError{ErrNotificationsUnsupported.Error()}), nil
 			}
 
@@ -245,7 +223,6 @@ func (s *Server) handle(ctx context.Context, codec ServerCodec, req *serverReque
 			return codec.CreateErrorResponse(&req.id, &callbackError{err.Error()}), nil
 		}
 
-		// active the subscription after the sub id was successfully sent to the client
 		activateSub := func() {
 			notifier, _ := NotifierFromContext(ctx)
 			notifier.activate(subid, req.svcname)
@@ -254,7 +231,6 @@ func (s *Server) handle(ctx context.Context, codec ServerCodec, req *serverReque
 		return codec.CreateResponse(req.id, subid), activateSub
 	}
 
-	// regular RPC call, prepare arguments
 	if len(req.args) != len(req.callb.argTypes) {
 		rpcErr := &invalidParamsError{fmt.Sprintf("%s%s%s expects %d parameters, got %d",
 			req.svcname, serviceMethodSeparator, req.callb.method.Name,
@@ -270,12 +246,11 @@ func (s *Server) handle(ctx context.Context, codec ServerCodec, req *serverReque
 		arguments = append(arguments, req.args...)
 	}
 
-	// execute RPC method and return result
 	reply := req.callb.method.Func.Call(arguments)
 	if len(reply) == 0 {
 		return codec.CreateResponse(req.id, nil), nil
 	}
-	if req.callb.errPos >= 0 { // test if method returned an error
+	if req.callb.errPos >= 0 {
 		if !reply[req.callb.errPos].IsNil() {
 			e := reply[req.callb.errPos].Interface().(error)
 			res := codec.CreateErrorResponse(&req.id, &callbackError{e.Error()})
@@ -299,7 +274,6 @@ func (s *Server) exec(ctx context.Context, codec ServerCodec, req *serverRequest
 		codec.Close()
 	}
 
-	// when request was a subscribe request this allows these subscriptions to be actived
 	if callback != nil {
 		callback()
 	}
@@ -324,7 +298,6 @@ func (s *Server) execBatch(ctx context.Context, codec ServerCodec, requests []*s
 		codec.Close()
 	}
 
-	// when request holds one of more subscribe requests this allows these subscriptions to be activated
 	for _, c := range callbacks {
 		c()
 	}
@@ -338,7 +311,6 @@ func (s *Server) readRequest(codec ServerCodec) ([]*serverRequest, bool, Error) 
 
 	requests := make([]*serverRequest, len(reqs))
 
-	// verify requests
 	for i, r := range reqs {
 		var ok bool
 		var svc *service
@@ -350,7 +322,7 @@ func (s *Server) readRequest(codec ServerCodec) ([]*serverRequest, bool, Error) 
 
 		if r.isPubSub && strings.HasSuffix(r.method, unsubscribeMethodSuffix) {
 			requests[i] = &serverRequest{id: r.id, isUnsubscribe: true}
-			argTypes := []reflect.Type{reflect.TypeOf("")} // expect subscription id as first arg
+			argTypes := []reflect.Type{reflect.TypeOf("")}
 			if args, err := codec.ParseRequestArguments(argTypes, r.params); err == nil {
 				requests[i].args = args
 			} else {
@@ -359,19 +331,19 @@ func (s *Server) readRequest(codec ServerCodec) ([]*serverRequest, bool, Error) 
 			continue
 		}
 
-		if svc, ok = s.services[r.service]; !ok { // rpc method isn't available
+		if svc, ok = s.services[r.service]; !ok {
 			requests[i] = &serverRequest{id: r.id, err: &methodNotFoundError{r.service, r.method}}
 			continue
 		}
 
-		if r.isPubSub { // eth_subscribe, r.method contains the subscription method name
+		if r.isPubSub {
 			if callb, ok := svc.subscriptions[r.method]; ok {
 				requests[i] = &serverRequest{id: r.id, svcname: svc.name, callb: callb}
 				if r.params != nil && len(callb.argTypes) > 0 {
 					argTypes := []reflect.Type{reflect.TypeOf("")}
 					argTypes = append(argTypes, callb.argTypes...)
 					if args, err := codec.ParseRequestArguments(argTypes, r.params); err == nil {
-						requests[i].args = args[1:] // first one is service.method name which isn't an actual argument
+						requests[i].args = args[1:]
 					} else {
 						requests[i].err = &invalidParamsError{err.Error()}
 					}
@@ -382,7 +354,7 @@ func (s *Server) readRequest(codec ServerCodec) ([]*serverRequest, bool, Error) 
 			continue
 		}
 
-		if callb, ok := svc.callbacks[r.method]; ok { // lookup RPC method
+		if callb, ok := svc.callbacks[r.method]; ok {
 			requests[i] = &serverRequest{id: r.id, svcname: svc.name, callb: callb}
 			if r.params != nil && len(callb.argTypes) > 0 {
 				if args, err := codec.ParseRequestArguments(callb.argTypes, r.params); err == nil {

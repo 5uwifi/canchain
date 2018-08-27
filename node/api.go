@@ -7,15 +7,15 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common/hexutil"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/metrics"
-	"github.com/5uwifi/canchain/basis/p2p"
-	"github.com/5uwifi/canchain/basis/p2p/discover"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/lib/metrics"
+	"github.com/5uwifi/canchain/lib/p2p"
+	"github.com/5uwifi/canchain/lib/p2p/discover"
 	"github.com/5uwifi/canchain/rpc"
 )
 
 type PrivateAdminAPI struct {
-	node *Node // Node interfaced by this API
+	node *Node
 }
 
 func NewPrivateAdminAPI(node *Node) *PrivateAdminAPI {
@@ -23,12 +23,10 @@ func NewPrivateAdminAPI(node *Node) *PrivateAdminAPI {
 }
 
 func (api *PrivateAdminAPI) AddPeer(url string) (bool, error) {
-	// Make sure the server is running, fail otherwise
 	server := api.node.Server()
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	// Try to add the url as a static peer and return
 	node, err := discover.ParseNode(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
@@ -38,12 +36,10 @@ func (api *PrivateAdminAPI) AddPeer(url string) (bool, error) {
 }
 
 func (api *PrivateAdminAPI) RemovePeer(url string) (bool, error) {
-	// Make sure the server is running, fail otherwise
 	server := api.node.Server()
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	// Try to remove the url as a static peer and return
 	node, err := discover.ParseNode(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
@@ -52,14 +48,38 @@ func (api *PrivateAdminAPI) RemovePeer(url string) (bool, error) {
 	return true, nil
 }
 
+func (api *PrivateAdminAPI) AddTrustedPeer(url string) (bool, error) {
+	server := api.node.Server()
+	if server == nil {
+		return false, ErrNodeStopped
+	}
+	node, err := discover.ParseNode(url)
+	if err != nil {
+		return false, fmt.Errorf("invalid ccnode: %v", err)
+	}
+	server.AddTrustedPeer(node)
+	return true, nil
+}
+
+func (api *PrivateAdminAPI) RemoveTrustedPeer(url string) (bool, error) {
+	server := api.node.Server()
+	if server == nil {
+		return false, ErrNodeStopped
+	}
+	node, err := discover.ParseNode(url)
+	if err != nil {
+		return false, fmt.Errorf("invalid ccnode: %v", err)
+	}
+	server.RemoveTrustedPeer(node)
+	return true, nil
+}
+
 func (api *PrivateAdminAPI) PeerEvents(ctx context.Context) (*rpc.Subscription, error) {
-	// Make sure the server is running, fail otherwise
 	server := api.node.Server()
 	if server == nil {
 		return nil, ErrNodeStopped
 	}
 
-	// Create the subscription
 	notifier, supported := rpc.NotifierFromContext(ctx)
 	if !supported {
 		return nil, rpc.ErrNotificationsUnsupported
@@ -131,7 +151,7 @@ func (api *PrivateAdminAPI) StartRPC(host *string, port *int, cors *string, apis
 		}
 	}
 
-	if err := api.node.startHTTP(fmt.Sprintf("%s:%d", *host, *port), api.node.rpcAPIs, modules, allowedOrigins, allowedVHosts); err != nil {
+	if err := api.node.startHTTP(fmt.Sprintf("%s:%d", *host, *port), api.node.rpcAPIs, modules, allowedOrigins, allowedVHosts, api.node.config.HTTPTimeouts); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -201,7 +221,7 @@ func (api *PrivateAdminAPI) StopWS() (bool, error) {
 }
 
 type PublicAdminAPI struct {
-	node *Node // Node interfaced by this API
+	node *Node
 }
 
 func NewPublicAdminAPI(node *Node) *PublicAdminAPI {
@@ -229,7 +249,7 @@ func (api *PublicAdminAPI) Datadir() string {
 }
 
 type PublicDebugAPI struct {
-	node *Node // Node interfaced by this API
+	node *Node
 }
 
 func NewPublicDebugAPI(node *Node) *PublicDebugAPI {
@@ -237,7 +257,6 @@ func NewPublicDebugAPI(node *Node) *PublicDebugAPI {
 }
 
 func (api *PublicDebugAPI) Metrics(raw bool) (map[string]interface{}, error) {
-	// Create a rate formatter
 	units := []string{"", "K", "M", "G", "T", "E", "P"}
 	round := func(value float64, prec int) string {
 		unit := 0
@@ -249,10 +268,8 @@ func (api *PublicDebugAPI) Metrics(raw bool) (map[string]interface{}, error) {
 	format := func(total float64, rate float64) string {
 		return fmt.Sprintf("%s (%s/s)", round(total, 0), round(rate, 2))
 	}
-	// Iterate over all the metrics, and just dump for now
 	counters := make(map[string]interface{})
 	metrics.DefaultRegistry.Each(func(name string, metric interface{}) {
-		// Create or retrieve the counter hierarchy for this metric
 		root, parts := counters, strings.Split(name, "/")
 		for _, part := range parts[:len(parts)-1] {
 			if _, ok := root[part]; !ok {
@@ -262,7 +279,6 @@ func (api *PublicDebugAPI) Metrics(raw bool) (map[string]interface{}, error) {
 		}
 		name = parts[len(parts)-1]
 
-		// Fill the counter with the metric details, formatting if requested
 		if raw {
 			switch metric := metric.(type) {
 			case metrics.Counter:
@@ -300,13 +316,13 @@ func (api *PublicDebugAPI) Metrics(raw bool) (map[string]interface{}, error) {
 				ps := t.Percentiles([]float64{5, 20, 50, 80, 95})
 				root[name] = map[string]interface{}{
 					"Measurements": len(t.Values()),
-					"Mean":         time.Duration(t.Mean()).String(),
+					"Mean":         t.Mean(),
 					"Percentiles": map[string]interface{}{
-						"5":  time.Duration(ps[0]).String(),
-						"20": time.Duration(ps[1]).String(),
-						"50": time.Duration(ps[2]).String(),
-						"80": time.Duration(ps[3]).String(),
-						"95": time.Duration(ps[4]).String(),
+						"5":  ps[0],
+						"20": ps[1],
+						"50": ps[2],
+						"80": ps[3],
+						"95": ps[4],
 					},
 				}
 

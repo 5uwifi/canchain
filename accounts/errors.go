@@ -18,7 +18,7 @@ var ErrWalletAlreadyOpen = errors.New("wallet already open")
 var ErrWalletClosed = errors.New("wallet closed")
 
 type AuthNeededError struct {
-	Needed string // Extra authentication the user needs to provide
+	Needed string
 }
 
 func NewAuthNeededError(needed string) error {

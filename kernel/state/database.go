@@ -4,40 +4,31 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/trie"
+	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/lib/trie"
 	lru "github.com/hashicorp/golang-lru"
 )
 
 var MaxTrieCacheGen = uint16(120)
 
 const (
-	// Number of past tries to keep. This value is chosen such that
-	// reasonable chain reorg depths will hit an existing trie.
 	maxPastTries = 12
 
-	// Number of codehash->size associations to keep.
 	codeSizeCacheSize = 100000
 )
 
 type Database interface {
-	// OpenTrie opens the main account trie.
 	OpenTrie(root common.Hash) (Trie, error)
 
-	// OpenStorageTrie opens the storage trie of an account.
 	OpenStorageTrie(addrHash, root common.Hash) (Trie, error)
 
-	// CopyTrie returns an independent copy of the given trie.
 	CopyTrie(Trie) Trie
 
-	// ContractCode retrieves a particular contract's code.
 	ContractCode(addrHash, codeHash common.Hash) ([]byte, error)
 
-	// ContractCodeSize retrieves a particular contracts code's size.
 	ContractCodeSize(addrHash, codeHash common.Hash) (int, error)
 
-	// TrieDB retrieves the low level trie database used for data storage.
 	TrieDB() *trie.Database
 }
 
@@ -48,7 +39,7 @@ type Trie interface {
 	Commit(onleaf trie.LeafCallback) (common.Hash, error)
 	Hash() common.Hash
 	NodeIterator(startKey []byte) trie.NodeIterator
-	GetKey([]byte) []byte // TODO(fjl): remove this when SecureTrie is removed
+	GetKey([]byte) []byte
 	Prove(key []byte, fromLevel uint, proofDb candb.Putter) error
 }
 

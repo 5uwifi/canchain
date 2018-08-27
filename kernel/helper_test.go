@@ -3,14 +3,12 @@ package kernel
 import (
 	"container/list"
 
-	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/candb"
-	"github.com/5uwifi/canchain/basis/event"
+	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/lib/event"
 )
 
-// Implement our EthTest Manager
 type TestManager struct {
-	// stateManager *StateManager
 	eventMux *event.TypeMux
 
 	db         candb.Database
@@ -43,17 +41,9 @@ func (tm *TestManager) TxPool() *TxPool {
 	return tm.txPool
 }
 
-// func (tm *TestManager) StateManager() *StateManager {
-// 	return tm.stateManager
-// }
-
 func (tm *TestManager) EventMux() *event.TypeMux {
 	return tm.eventMux
 }
-
-// func (tm *TestManager) KeyManager() *crypto.KeyManager {
-// 	return nil
-// }
 
 func (tm *TestManager) Db() candb.Database {
 	return tm.db
@@ -63,8 +53,5 @@ func NewTestManager() *TestManager {
 	testManager := &TestManager{}
 	testManager.eventMux = new(event.TypeMux)
 	testManager.db = candb.NewMemDatabase()
-	// testManager.txPool = NewTxPool(testManager)
-	// testManager.blockChain = NewBlockChain(testManager)
-	// testManager.stateManager = NewStateManager(testManager)
 	return testManager
 }

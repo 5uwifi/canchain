@@ -40,15 +40,9 @@ func (s *NotificationTestService) SomeSubscription(ctx context.Context, n, val i
 		return nil, ErrNotificationsUnsupported
 	}
 
-	// by explicitly creating an subscription we make sure that the subscription id is send back to the client
-	// before the first subscription.Notify is called. Otherwise the events might be send before the response
-	// for the eth_subscribe method.
 	subscription := notifier.CreateSubscription()
 
 	go func() {
-		// test expects n events, if we begin sending event immediately some events
-		// will probably be dropped since the subscription ID might not be send to
-		// the client.
 		time.Sleep(5 * time.Second)
 		for i := 0; i < n; i++ {
 			if err := notifier.Notify(subscription.ID, val+i); err != nil {
@@ -71,8 +65,6 @@ func (s *NotificationTestService) SomeSubscription(ctx context.Context, n, val i
 	return subscription, nil
 }
 
-// HangSubscription blocks on s.unblockHangSubscription before
-// sending anything.
 func (s *NotificationTestService) HangSubscription(ctx context.Context, val int) (*Subscription, error) {
 	notifier, supported := NotifierFromContext(ctx)
 	if !supported {
@@ -93,7 +85,7 @@ func TestNotifications(t *testing.T) {
 	server := NewServer()
 	service := &NotificationTestService{}
 
-	if err := server.RegisterName("can", service); err != nil {
+	if err := server.RegisterName("eth", service); err != nil {
 		t.Fatalf("unable to register test service %v", err)
 	}
 
@@ -108,12 +100,11 @@ func TestNotifications(t *testing.T) {
 	val := 12345
 	request := map[string]interface{}{
 		"id":      1,
-		"method":  "can_subscribe",
+		"method":  "eth_subscribe",
 		"version": "2.0",
 		"params":  []interface{}{"someSubscription", n, val},
 	}
 
-	// create subscription
 	if err := out.Encode(request); err != nil {
 		t.Fatal(err)
 	}
@@ -140,7 +131,7 @@ func TestNotifications(t *testing.T) {
 		}
 	}
 
-	clientConn.Close() // causes notification unsubscribe callback to be called
+	clientConn.Close()
 	time.Sleep(1 * time.Second)
 
 	if !service.wasUnsubCallbackCalled() {
@@ -151,7 +142,6 @@ func TestNotifications(t *testing.T) {
 func waitForMessages(t *testing.T, in *json.Decoder, successes chan<- jsonSuccessResponse,
 	failures chan<- jsonErrResponse, notifications chan<- jsonNotification, errors chan<- error) {
 
-	// read and parse server messages
 	for {
 		var rmsg json.RawMessage
 		if err := in.Decode(&rmsg); err != nil {
@@ -174,8 +164,6 @@ func waitForMessages(t *testing.T, in *json.Decoder, successes chan<- jsonSucces
 		}
 
 		for _, msg := range responses {
-			// determine what kind of msg was received and broadcast
-			// it to over the corresponding channel
 			if _, found := msg["result"]; found {
 				successes <- jsonSuccessResponse{
 					Version: msg["jsonrpc"].(string),
@@ -207,11 +195,9 @@ func waitForMessages(t *testing.T, in *json.Decoder, successes chan<- jsonSucces
 	}
 }
 
-// TestSubscriptionMultipleNamespaces ensures that subscriptions can exists
-// for multiple different namespaces.
 func TestSubscriptionMultipleNamespaces(t *testing.T) {
 	var (
-		namespaces             = []string{"can", "shh", "bzz"}
+		namespaces             = []string{"eth", "shh", "bzz"}
 		server                 = NewServer()
 		service                = NotificationTestService{}
 		clientConn, serverConn = net.Pipe()
@@ -225,7 +211,6 @@ func TestSubscriptionMultipleNamespaces(t *testing.T) {
 		errors = make(chan error, 10)
 	)
 
-	// setup and start server
 	for _, namespace := range namespaces {
 		if err := server.RegisterName(namespace, &service); err != nil {
 			t.Fatalf("unable to register test service %v", err)
@@ -235,10 +220,8 @@ func TestSubscriptionMultipleNamespaces(t *testing.T) {
 	go server.ServeCodec(NewJSONCodec(serverConn), OptionMethodInvocation|OptionSubscriptions)
 	defer server.Stop()
 
-	// wait for message and write them to the given channels
 	go waitForMessages(t, in, successes, failures, notifications, errors)
 
-	// create subscriptions one by one
 	n := 3
 	for i, namespace := range namespaces {
 		request := map[string]interface{}{
@@ -253,7 +236,6 @@ func TestSubscriptionMultipleNamespaces(t *testing.T) {
 		}
 	}
 
-	// create all subscriptions in 1 batch
 	var requests []interface{}
 	for i, namespace := range namespaces {
 		requests = append(requests, map[string]interface{}{
@@ -287,7 +269,7 @@ func TestSubscriptionMultipleNamespaces(t *testing.T) {
 		select {
 		case err := <-errors:
 			t.Fatal(err)
-		case suc := <-successes: // subscription created
+		case suc := <-successes:
 			subids[namespaces[int(suc.Id.(float64))]] = suc.Result.(string)
 		case failure := <-failures:
 			t.Errorf("received error: %v", failure.Error)

@@ -1,4 +1,3 @@
-
 package rpc
 
 import (
@@ -30,8 +29,6 @@ func isExportedOrBuiltinType(t reflect.Type) bool {
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	// PkgPath will be non-empty even for an exported type,
-	// so we need to check the type name as well.
 	return isExported(t.Name()) || t.PkgPath() == ""
 }
 
@@ -63,7 +60,6 @@ func isSubscriptionType(t reflect.Type) bool {
 }
 
 func isPubSub(methodType reflect.Type) bool {
-	// numIn(0) is the receiver type
 	if methodType.NumIn() < 2 || methodType.NumOut() != 2 {
 		return false
 	}
@@ -90,7 +86,7 @@ METHODS:
 		method := typ.Method(m)
 		mtype := method.Type
 		mname := formatName(method.Name)
-		if method.PkgPath != "" { // method must be exported
+		if method.PkgPath != "" {
 			continue
 		}
 
@@ -108,7 +104,7 @@ METHODS:
 		}
 
 		if h.isSubscribe {
-			h.argTypes = make([]reflect.Type, numIn-firstArg) // skip rcvr type
+			h.argTypes = make([]reflect.Type, numIn-firstArg)
 			for i := firstArg; i < numIn; i++ {
 				argType := mtype.In(i)
 				if isExportedOrBuiltinType(argType) {
@@ -122,8 +118,6 @@ METHODS:
 			continue METHODS
 		}
 
-		// determine method arguments, ignore first arg since it's the receiver type
-		// Arguments must be exported or builtin types
 		h.argTypes = make([]reflect.Type, numIn-firstArg)
 		for i := firstArg; i < numIn; i++ {
 			argType := mtype.In(i)
@@ -133,14 +127,12 @@ METHODS:
 			h.argTypes[i-firstArg] = argType
 		}
 
-		// check that all returned values are exported or builtin types
 		for i := 0; i < mtype.NumOut(); i++ {
 			if !isExportedOrBuiltinType(mtype.Out(i)) {
 				continue METHODS
 			}
 		}
 
-		// when a method returns an error it must be the last returned value
 		h.errPos = -1
 		for i := 0; i < mtype.NumOut(); i++ {
 			if isErrorType(mtype.Out(i)) {
@@ -155,7 +147,7 @@ METHODS:
 
 		switch mtype.NumOut() {
 		case 0, 1, 2:
-			if mtype.NumOut() == 2 && h.errPos == -1 { // method must one return value and 1 error
+			if mtype.NumOut() == 2 && h.errPos == -1 {
 				continue METHODS
 			}
 			callbacks[mname] = &h
@@ -186,7 +178,6 @@ func NewID() ID {
 	}
 
 	rpcId := hex.EncodeToString(id)
-	// rpc ID's are RPC quantities, no leading zero's and 0 is 0x0
 	rpcId = strings.TrimLeft(rpcId, "0")
 	if rpcId == "" {
 		rpcId = "0"

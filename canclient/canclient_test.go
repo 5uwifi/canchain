@@ -2,7 +2,6 @@ package canclient
 
 import "github.com/5uwifi/canchain"
 
-// Verify that Client implements the canchain interfaces.
 var (
 	_ = canchain.ChainReader(&Client{})
 	_ = canchain.TransactionReader(&Client{})

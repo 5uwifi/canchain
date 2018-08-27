@@ -9,11 +9,8 @@ import (
 	"github.com/5uwifi/canchain/common"
 )
 
-// typeWithoutStringer is a alias for the Type type which simply doesn't implement
-// the stringer interface to allow printing type details in the tests below.
 type typeWithoutStringer Type
 
-// Tests that all allowed types get recognized by the type parser.
 func TestTypeRegexp(t *testing.T) {
 	tests := []struct {
 		blob string
@@ -68,16 +65,9 @@ func TestTypeRegexp(t *testing.T) {
 		{"string", Type{Kind: reflect.String, T: StringTy, Type: reflect.TypeOf(""), stringKind: "string"}},
 		{"string[]", Type{T: SliceTy, Kind: reflect.Slice, Type: reflect.TypeOf([]string{}), Elem: &Type{Kind: reflect.String, Type: reflect.TypeOf(""), T: StringTy, stringKind: "string"}, stringKind: "string[]"}},
 		{"string[2]", Type{Kind: reflect.Array, T: ArrayTy, Size: 2, Type: reflect.TypeOf([2]string{}), Elem: &Type{Kind: reflect.String, T: StringTy, Type: reflect.TypeOf(""), stringKind: "string"}, stringKind: "string[2]"}},
-		{"address", Type{Kind: reflect.Array, Type: addressT, Size: 26, T: AddressTy, stringKind: "address"}},
-		{"address[]", Type{T: SliceTy, Kind: reflect.Slice, Type: reflect.TypeOf([]common.Address{}), Elem: &Type{Kind: reflect.Array, Type: addressT, Size: 26, T: AddressTy, stringKind: "address"}, stringKind: "address[]"}},
-		{"address[2]", Type{Kind: reflect.Array, T: ArrayTy, Size: 2, Type: reflect.TypeOf([2]common.Address{}), Elem: &Type{Kind: reflect.Array, Type: addressT, Size: 26, T: AddressTy, stringKind: "address"}, stringKind: "address[2]"}},
-		// TODO when fixed types are implemented properly
-		// {"fixed", Type{}},
-		// {"fixed128x128", Type{}},
-		// {"fixed[]", Type{}},
-		// {"fixed[2]", Type{}},
-		// {"fixed128x128[]", Type{}},
-		// {"fixed128x128[2]", Type{}},
+		{"address", Type{Kind: reflect.Array, Type: addressT, Size: 20, T: AddressTy, stringKind: "address"}},
+		{"address[]", Type{T: SliceTy, Kind: reflect.Slice, Type: reflect.TypeOf([]common.Address{}), Elem: &Type{Kind: reflect.Array, Type: addressT, Size: 20, T: AddressTy, stringKind: "address"}, stringKind: "address[]"}},
+		{"address[2]", Type{Kind: reflect.Array, T: ArrayTy, Size: 2, Type: reflect.TypeOf([2]common.Address{}), Elem: &Type{Kind: reflect.Array, Type: addressT, Size: 20, T: AddressTy, stringKind: "address"}, stringKind: "address[2]"}},
 	}
 
 	for _, tt := range tests {
@@ -233,8 +223,8 @@ func TestTypeCheck(t *testing.T) {
 		{"string", []byte{}, "abi: cannot use slice as type string as argument"},
 		{"bytes32[]", [][32]byte{{}}, ""},
 		{"function", [24]byte{}, ""},
-		{"bytes26", common.Address{}, ""},
-		{"address", [26]byte{}, ""},
+		{"bytes20", common.Address{}, ""},
+		{"address", [20]byte{}, ""},
 		{"address", common.Address{}, ""},
 		{"bytes32[]]", "", "invalid arg type in abi"},
 		{"invalidType", "", "unsupported arg type: invalidType"},
@@ -263,7 +253,5 @@ func TestTypeCheck(t *testing.T) {
 		if err != nil && len(test.err) != 0 && err.Error() != test.err {
 			t.Errorf("%d failed. Expected err: '%v' got err: '%v'", i, test.err, err)
 		}
-
-		t.Log("mytest")
 	}
 }

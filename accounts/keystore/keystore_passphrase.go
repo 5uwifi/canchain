@@ -1,20 +1,29 @@
+/*
+
+This key store behaves as KeyStorePlain with the difference that
+the private key is encrypted and on disk uses another JSON encoding.
+
+The crypto is documented at https://github.com/ethereum/wiki/wiki/Web3-Secret-Storage-Definition
+
+*/
+
 package keystore
 
 import (
 	"bytes"
 	"crypto/aes"
-	crand "crypto/rand"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"path/filepath"
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
-	"github.com/5uwifi/canchain/basis/crypto"
-	"github.com/5uwifi/canchain/basis/crypto/randentropy"
+	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/pborman/uuid"
 	"golang.org/x/crypto/pbkdf2"
 	"golang.org/x/crypto/scrypt"
@@ -23,20 +32,12 @@ import (
 const (
 	keyHeaderKDF = "scrypt"
 
-	// StandardScryptN is the N parameter of Scrypt encryption algorithm, using 256MB
-	// memory and taking approximately 1s CPU time on a modern processor.
 	StandardScryptN = 1 << 18
 
-	// StandardScryptP is the P parameter of Scrypt encryption algorithm, using 256MB
-	// memory and taking approximately 1s CPU time on a modern processor.
 	StandardScryptP = 1
 
-	// LightScryptN is the N parameter of Scrypt encryption algorithm, using 4MB
-	// memory and taking approximately 100ms CPU time on a modern processor.
 	LightScryptN = 1 << 12
 
-	// LightScryptP is the P parameter of Scrypt encryption algorithm, using 4MB
-	// memory and taking approximately 100ms CPU time on a modern processor.
 	LightScryptP = 6
 
 	scryptR     = 8
@@ -50,7 +51,6 @@ type keyStorePassphrase struct {
 }
 
 func (ks keyStorePassphrase) GetKey(addr common.Address, filename, auth string) (*Key, error) {
-	// Load the key from the keystore and decrypt its contents
 	keyjson, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
@@ -59,7 +59,6 @@ func (ks keyStorePassphrase) GetKey(addr common.Address, filename, auth string) 
 	if err != nil {
 		return nil, err
 	}
-	// Make sure we're really operating on the requested key (no swap attacks)
 	if key.Address != addr {
 		return nil, fmt.Errorf("key content mismatch: have account %x, want %x", key.Address, addr)
 	}
@@ -67,7 +66,7 @@ func (ks keyStorePassphrase) GetKey(addr common.Address, filename, auth string) 
 }
 
 func StoreKey(dir, auth string, scryptN, scryptP int) (common.Address, error) {
-	_, a, err := storeNewKey(&keyStorePassphrase{dir, scryptN, scryptP}, crand.Reader, auth)
+	_, a, err := storeNewKey(&keyStorePassphrase{dir, scryptN, scryptP}, rand.Reader, auth)
 	return a.Address, err
 }
 
@@ -88,7 +87,11 @@ func (ks keyStorePassphrase) JoinPath(filename string) string {
 
 func EncryptKey(key *Key, auth string, scryptN, scryptP int) ([]byte, error) {
 	authArray := []byte(auth)
-	salt := randentropy.GetEntropyCSPRNG(32)
+
+	salt := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, salt); err != nil {
+		panic("reading from crypto/rand failed: " + err.Error())
+	}
 	derivedKey, err := scrypt.Key(authArray, salt, scryptN, scryptR, scryptP, scryptDKLen)
 	if err != nil {
 		return nil, err
@@ -96,7 +99,10 @@ func EncryptKey(key *Key, auth string, scryptN, scryptP int) ([]byte, error) {
 	encryptKey := derivedKey[:16]
 	keyBytes := math.PaddedBigBytes(key.PrivateKey.D, 32)
 
-	iv := randentropy.GetEntropyCSPRNG(aes.BlockSize) // 16
+	iv := make([]byte, aes.BlockSize)
+	if _, err := io.ReadFull(rand.Reader, iv); err != nil {
+		panic("reading from crypto/rand failed: " + err.Error())
+	}
 	cipherText, err := aesCTRXOR(encryptKey, keyBytes, iv)
 	if err != nil {
 		return nil, err
@@ -132,12 +138,10 @@ func EncryptKey(key *Key, auth string, scryptN, scryptP int) ([]byte, error) {
 }
 
 func DecryptKey(keyjson []byte, auth string) (*Key, error) {
-	// Parse the json into a simple map to fetch the key version
 	m := make(map[string]interface{})
 	if err := json.Unmarshal(keyjson, &m); err != nil {
 		return nil, err
 	}
-	// Depending on the version try to parse one way or another
 	var (
 		keyBytes, keyId []byte
 		err             error
@@ -155,7 +159,6 @@ func DecryptKey(keyjson []byte, auth string) (*Key, error) {
 		}
 		keyBytes, keyId, err = decryptKeyV3(k, auth)
 	}
-	// Handle any decryption errors and return the key
 	if err != nil {
 		return nil, err
 	}

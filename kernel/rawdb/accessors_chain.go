@@ -1,4 +1,3 @@
-
 package rawdb
 
 import (
@@ -8,8 +7,8 @@ import (
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/basis/log4j"
-	"github.com/5uwifi/canchain/basis/rlp"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/rlp"
 )
 
 func ReadCanonicalHash(db DatabaseReader, number uint64) common.Hash {
@@ -123,7 +122,6 @@ func ReadHeader(db DatabaseReader, hash common.Hash, number uint64) *types.Heade
 }
 
 func WriteHeader(db DatabaseWriter, header *types.Header) {
-	// Write the hash -> number mapping
 	var (
 		hash    = header.Hash()
 		number  = header.Number.Uint64()
@@ -133,7 +131,6 @@ func WriteHeader(db DatabaseWriter, header *types.Header) {
 	if err := db.Put(key, encoded); err != nil {
 		log4j.Crit("Failed to store hash to number mapping", "err", err)
 	}
-	// Write the encoded header
 	data, err := rlp.EncodeToBytes(header)
 	if err != nil {
 		log4j.Crit("Failed to RLP encode header", "err", err)
@@ -228,12 +225,10 @@ func DeleteTd(db DatabaseDeleter, hash common.Hash, number uint64) {
 }
 
 func ReadReceipts(db DatabaseReader, hash common.Hash, number uint64) types.Receipts {
-	// Retrieve the flattened receipt slice
 	data, _ := db.Get(blockReceiptsKey(number, hash))
 	if len(data) == 0 {
 		return nil
 	}
-	// Convert the revceipts from their storage form to their internal representation
 	storageReceipts := []*types.ReceiptForStorage{}
 	if err := rlp.DecodeBytes(data, &storageReceipts); err != nil {
 		log4j.Error("Invalid receipt array RLP", "hash", hash, "err", err)
@@ -247,7 +242,6 @@ func ReadReceipts(db DatabaseReader, hash common.Hash, number uint64) types.Rece
 }
 
 func WriteReceipts(db DatabaseWriter, hash common.Hash, number uint64, receipts types.Receipts) {
-	// Convert the receipts into their storage form and serialize them
 	storageReceipts := make([]*types.ReceiptForStorage, len(receipts))
 	for i, receipt := range receipts {
 		storageReceipts[i] = (*types.ReceiptForStorage)(receipt)
@@ -256,7 +250,6 @@ func WriteReceipts(db DatabaseWriter, hash common.Hash, number uint64, receipts 
 	if err != nil {
 		log4j.Crit("Failed to encode block receipts", "err", err)
 	}
-	// Store the flattened receipt slice
 	if err := db.Put(blockReceiptsKey(number, hash), bytes); err != nil {
 		log4j.Crit("Failed to store block receipts", "err", err)
 	}
@@ -268,7 +261,6 @@ func DeleteReceipts(db DatabaseDeleter, hash common.Hash, number uint64) {
 	}
 }
 
-//
 func ReadBlock(db DatabaseReader, hash common.Hash, number uint64) *types.Block {
 	header := ReadHeader(db, hash, number)
 	if header == nil {

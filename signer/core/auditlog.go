@@ -8,8 +8,8 @@ import (
 	"github.com/5uwifi/canchain/accounts"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/privacy/canapi"
 )
 
 type AuditLogger struct {
@@ -68,13 +68,11 @@ func (l *AuditLogger) Export(ctx context.Context, addr common.Address) (json.Raw
 	l.log.Info("Export", "type", "request", "metadata", MetadataFromContext(ctx).String(),
 		"addr", addr.Hex())
 	j, e := l.api.Export(ctx, addr)
-	// In this case, we don't actually log the json-response, which may be extra sensitive
 	l.log.Info("Export", "type", "response", "json response size", len(j), "error", e)
 	return j, e
 }
 
 func (l *AuditLogger) Import(ctx context.Context, keyJSON json.RawMessage) (Account, error) {
-	// Don't actually log the json contents
 	l.log.Info("Import", "type", "request", "metadata", MetadataFromContext(ctx).String(),
 		"keyJSON size", len(keyJSON))
 	a, e := l.api.Import(ctx, keyJSON)

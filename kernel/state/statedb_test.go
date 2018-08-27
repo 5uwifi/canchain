@@ -14,19 +14,15 @@ import (
 
 	check "gopkg.in/check.v1"
 
+	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/candb"
 )
 
-// Tests that updating a state trie does not leak any database writes prior to
-// actually committing the state.
 func TestUpdateLeaks(t *testing.T) {
-	// Create an empty state database
 	db := candb.NewMemDatabase()
 	state, _ := New(common.Hash{}, NewDatabase(db))
 
-	// Update it with some accounts
 	for i := byte(0); i < 255; i++ {
 		addr := common.BytesToAddress([]byte{i})
 		state.AddBalance(addr, big.NewInt(int64(11*i)))
@@ -39,17 +35,13 @@ func TestUpdateLeaks(t *testing.T) {
 		}
 		state.IntermediateRoot(false)
 	}
-	// Ensure that no data was leaked into the database
 	for _, key := range db.Keys() {
 		value, _ := db.Get(key)
 		t.Errorf("State leaked into database: %x -> %x", key, value)
 	}
 }
 
-// Tests that no intermediate state of an object is stored into the database,
-// only the one right before the commit.
 func TestIntermediateLeaks(t *testing.T) {
-	// Create two state databases, one transitioning to the final state, the other final from the beginning
 	transDb := candb.NewMemDatabase()
 	finalDb := candb.NewMemDatabase()
 	transState, _ := New(common.Hash{}, NewDatabase(transDb))
@@ -67,20 +59,16 @@ func TestIntermediateLeaks(t *testing.T) {
 		}
 	}
 
-	// Modify the transient state.
 	for i := byte(0); i < 255; i++ {
 		modify(transState, common.Address{byte(i)}, i, 0)
 	}
-	// Write modifications to trie.
 	transState.IntermediateRoot(false)
 
-	// Overwrite all the data with new values in the transient database.
 	for i := byte(0); i < 255; i++ {
 		modify(transState, common.Address{byte(i)}, i, 99)
 		modify(finalState, common.Address{byte(i)}, i, 99)
 	}
 
-	// Commit and cross check the databases.
 	if _, err := transState.Commit(false); err != nil {
 		t.Fatalf("failed to commit transition state: %v", err)
 	}
@@ -101,11 +89,7 @@ func TestIntermediateLeaks(t *testing.T) {
 	}
 }
 
-// TestCopy tests that copying a statedb object indeed makes the original and
-// the copy independent of each other. This test is a regression test against
-// https://github.com/5uwifi/canchain/pull/15549.
 func TestCopy(t *testing.T) {
-	// Create a random state test to copy and modify "independently"
 	orig, _ := New(common.Hash{}, NewDatabase(candb.NewMemDatabase()))
 
 	for i := byte(0); i < 255; i++ {
@@ -115,7 +99,6 @@ func TestCopy(t *testing.T) {
 	}
 	orig.Finalise(false)
 
-	// Copy the state, modify both in-memory
 	copy := orig.Copy()
 
 	for i := byte(0); i < 255; i++ {
@@ -128,7 +111,6 @@ func TestCopy(t *testing.T) {
 		orig.updateStateObject(origObj)
 		copy.updateStateObject(copyObj)
 	}
-	// Finalise the changes on both concurrently
 	done := make(chan struct{})
 	go func() {
 		orig.Finalise(true)
@@ -137,7 +119,6 @@ func TestCopy(t *testing.T) {
 	copy.Finalise(true)
 	<-done
 
-	// Verify that the two states have been updated independently
 	for i := byte(0); i < 255; i++ {
 		origObj := orig.GetOrNewStateObject(common.BytesToAddress([]byte{i}))
 		copyObj := copy.GetOrNewStateObject(common.BytesToAddress([]byte{i}))
@@ -162,22 +143,11 @@ func TestSnapshotRandom(t *testing.T) {
 	}
 }
 
-// A snapshotTest checks that reverting StateDB snapshots properly undoes all changes
-// captured by the snapshot. Instances of this test with pseudorandom content are created
-// by Generate.
-//
-// The test works as follows:
-//
-// A new state is created and all actions are applied to it. Several snapshots are taken
-// in between actions. The test then reverts each snapshot. For each snapshot the actions
-// leading up to it are replayed on a fresh, empty state. The behaviour of all public
-// accessor methods on the reverted state must match the return value of the equivalent
-// methods on the replayed state.
 type snapshotTest struct {
-	addrs     []common.Address // all account addresses
-	actions   []testAction     // modifications to the state
-	snapshots []int            // actions indexes at which snapshot is taken
-	err       error            // failure details are reported through this field
+	addrs     []common.Address
+	actions   []testAction
+	snapshots []int
+	err       error
 }
 
 type testAction struct {
@@ -187,7 +157,6 @@ type testAction struct {
 	noAddr bool
 }
 
-// newTestAction creates a random action that changes state.
 func newTestAction(addr common.Address, r *rand.Rand) testAction {
 	actions := []testAction{
 		{
@@ -274,10 +243,7 @@ func newTestAction(addr common.Address, r *rand.Rand) testAction {
 	return action
 }
 
-// Generate returns a new snapshot test of the given size. All randomness is
-// derived from r.
 func (*snapshotTest) Generate(r *rand.Rand, size int) reflect.Value {
-	// Generate random actions.
 	addrs := make([]common.Address, 50)
 	for i := range addrs {
 		addrs[i][0] = byte(i)
@@ -287,7 +253,6 @@ func (*snapshotTest) Generate(r *rand.Rand, size int) reflect.Value {
 		addr := addrs[r.Intn(len(addrs))]
 		actions[i] = newTestAction(addr, r)
 	}
-	// Generate snapshot indexes.
 	nsnapshots := int(math.Sqrt(float64(size)))
 	if size > 0 && nsnapshots == 0 {
 		nsnapshots = 1
@@ -295,7 +260,6 @@ func (*snapshotTest) Generate(r *rand.Rand, size int) reflect.Value {
 	snapshots := make([]int, nsnapshots)
 	snaplen := len(actions) / nsnapshots
 	for i := range snapshots {
-		// Try to place the snapshots some number of actions apart from each other.
 		snapshots[i] = (i * snaplen) + r.Intn(snaplen)
 	}
 	return reflect.ValueOf(&snapshotTest{addrs, actions, snapshots, nil})
@@ -315,7 +279,6 @@ func (test *snapshotTest) String() string {
 }
 
 func (test *snapshotTest) run() bool {
-	// Run all actions and create snapshots.
 	var (
 		state, _     = New(common.Hash{}, NewDatabase(candb.NewMemDatabase()))
 		snapshotRevs = make([]int, len(test.snapshots))
@@ -328,8 +291,6 @@ func (test *snapshotTest) run() bool {
 		}
 		action.fn(action, state)
 	}
-	// Revert all snapshots in reverse order. Each revert must yield a state
-	// that is equivalent to fresh state with all actions up the snapshot applied.
 	for sindex--; sindex >= 0; sindex-- {
 		checkstate, _ := New(common.Hash{}, state.Database())
 		for _, action := range test.actions[:test.snapshots[sindex]] {
@@ -344,7 +305,6 @@ func (test *snapshotTest) run() bool {
 	return true
 }
 
-// checkEqual checks that methods of state and checkstate return the same values.
 func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 	for _, addr := range test.addrs {
 		var err error
@@ -355,7 +315,6 @@ func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 			}
 			return true
 		}
-		// Check basic accessor methods.
 		checkeq("Exist", state.Exist(addr), checkstate.Exist(addr))
 		checkeq("HasSuicided", state.HasSuicided(addr), checkstate.HasSuicided(addr))
 		checkeq("GetBalance", state.GetBalance(addr), checkstate.GetBalance(addr))
@@ -363,7 +322,6 @@ func (test *snapshotTest) checkEqual(state, checkstate *StateDB) error {
 		checkeq("GetCode", state.GetCode(addr), checkstate.GetCode(addr))
 		checkeq("GetCodeHash", state.GetCodeHash(addr), checkstate.GetCodeHash(addr))
 		checkeq("GetCodeSize", state.GetCodeSize(addr), checkstate.GetCodeSize(addr))
-		// Check storage.
 		if obj := state.getStateObject(addr); obj != nil {
 			state.ForEachStorage(addr, func(key, val common.Hash) bool {
 				return checkeq("GetState("+key.Hex()+")", val, checkstate.GetState(addr, key))
@@ -405,8 +363,6 @@ func (s *StateSuite) TestTouchDelete(c *check.C) {
 	}
 }
 
-// TestCopyOfCopy tests that modified objects are carried over to the copy, and the copy of the copy.
-// See https://github.com/5uwifi/canchain/pull/15225#issuecomment-380191512
 func TestCopyOfCopy(t *testing.T) {
 	sdb, _ := New(common.Hash{}, NewDatabase(candb.NewMemDatabase()))
 	addr := common.HexToAddress("aaaa")

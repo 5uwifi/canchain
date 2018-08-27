@@ -1,4 +1,3 @@
-
 package tests
 
 import (
@@ -11,8 +10,8 @@ import (
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/common/math"
 	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
-	"github.com/5uwifi/canchain/basis/rlp"
 )
 
 type TransactionTest struct {
@@ -26,6 +25,7 @@ type ttJSON struct {
 	Transaction *ttTransaction      `json:"transaction"`
 }
 
+//go:generate gencodec -type ttTransaction -field-override ttTransactionMarshaling -out gen_tttransaction.go
 
 type ttTransaction struct {
 	Data     []byte         `gencodec:"required"`
@@ -58,7 +58,6 @@ func (tt *TransactionTest) Run(config *params.ChainConfig) error {
 		}
 		return fmt.Errorf("RLP decoding failed: %v", err)
 	}
-	// Check sender derivation.
 	signer := types.MakeSigner(config, new(big.Int).SetUint64(uint64(tt.json.BlockNumber)))
 	sender, err := types.Sender(signer, tx)
 	if err != nil {
@@ -67,7 +66,6 @@ func (tt *TransactionTest) Run(config *params.ChainConfig) error {
 	if sender != common.BytesToAddress(tt.json.Sender) {
 		return fmt.Errorf("Sender mismatch: got %x, want %x", sender, tt.json.Sender)
 	}
-	// Check decoded fields.
 	err = tt.json.Transaction.verify(signer, tx)
 	if tt.json.Sender == nil && err == nil {
 		return errors.New("field validations succeeded but should fail")

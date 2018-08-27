@@ -9,7 +9,9 @@ import (
 )
 
 var DefaultRootDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0}
+
 var DefaultBaseDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0, 0}
+
 var DefaultLedgerBaseDerivationPath = DerivationPath{0x80000000 + 44, 0x80000000 + 60, 0x80000000 + 0, 0}
 
 type DerivationPath []uint32
@@ -17,7 +19,6 @@ type DerivationPath []uint32
 func ParseDerivationPath(path string) (DerivationPath, error) {
 	var result DerivationPath
 
-	// Handle absolute or relative paths
 	components := strings.Split(path, "/")
 	switch {
 	case len(components) == 0:
@@ -32,21 +33,17 @@ func ParseDerivationPath(path string) (DerivationPath, error) {
 	default:
 		result = append(result, DefaultRootDerivationPath...)
 	}
-	// All remaining components are relative, append one by one
 	if len(components) == 0 {
-		return nil, errors.New("empty derivation path") // Empty relative paths
+		return nil, errors.New("empty derivation path")
 	}
 	for _, component := range components {
-		// Ignore any user added whitespace
 		component = strings.TrimSpace(component)
 		var value uint32
 
-		// Handle hardened paths
 		if strings.HasSuffix(component, "'") {
 			value = 0x80000000
 			component = strings.TrimSpace(strings.TrimSuffix(component, "'"))
 		}
-		// Handle the non hardened component
 		bigval, ok := new(big.Int).SetString(component, 0)
 		if !ok {
 			return nil, fmt.Errorf("invalid component: %s", component)
@@ -60,7 +57,6 @@ func ParseDerivationPath(path string) (DerivationPath, error) {
 		}
 		value += uint32(bigval.Uint64())
 
-		// Append and repeat
 		result = append(result, value)
 	}
 	return result, nil

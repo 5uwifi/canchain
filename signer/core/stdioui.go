@@ -4,8 +4,8 @@ import (
 	"context"
 	"sync"
 
-	"github.com/5uwifi/canchain/internal/canapi"
-	"github.com/5uwifi/canchain/basis/log4j"
+	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/privacy/canapi"
 	"github.com/5uwifi/canchain/rpc"
 )
 
