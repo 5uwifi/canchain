@@ -10,7 +10,6 @@ import (
 	"github.com/5uwifi/canchain/can/downloader"
 	"github.com/5uwifi/canchain/can/filters"
 	"github.com/5uwifi/canchain/can/gasprice"
-	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/kernel"
@@ -30,23 +29,22 @@ import (
 )
 
 type LightCANChain struct {
-	config *can.Config
+	lesCommons
 
-	odr             *LesOdr
-	relay           *LesTxRelay
-	chainConfig     *params.ChainConfig
-	shutdownChan    chan bool
-	peers           *peerSet
-	txPool          *light.TxPool
-	blockchain      *light.LightChain
-	protocolManager *ProtocolManager
-	serverPool      *serverPool
-	reqDist         *requestDistributor
-	retriever       *retrieveManager
-	chainDb         candb.Database
+	odr          *LesOdr
+	relay        *LesTxRelay
+	chainConfig  *params.ChainConfig
+	shutdownChan chan bool
 
-	bloomRequests                              chan chan *bloombits.Retrieval
-	bloomIndexer, chtIndexer, bloomTrieIndexer *kernel.ChainIndexer
+	peers      *peerSet
+	txPool     *light.TxPool
+	blockchain *light.LightChain
+	serverPool *serverPool
+	reqDist    *requestDistributor
+	retriever  *retrieveManager
+
+	bloomRequests chan chan *bloombits.Retrieval
+	bloomIndexer  *kernel.ChainIndexer
 
 	ApiBackend *LcsApiBackend
 
@@ -75,30 +73,38 @@ func New(ctx *node.ServiceContext, config *can.Config) (*LightCANChain, error) {
 	quitSync := make(chan struct{})
 
 	leth := &LightCANChain{
-		config:           config,
-		chainConfig:      chainConfig,
-		chainDb:          chainDb,
-		eventMux:         ctx.EventMux,
-		peers:            peers,
-		reqDist:          newRequestDistributor(peers, quitSync),
-		accountManager:   ctx.AccountManager,
-		engine:           can.CreateConsensusEngine(ctx, chainConfig, &config.Ethash, nil, chainDb),
-		shutdownChan:     make(chan bool),
-		networkId:        config.NetworkId,
-		bloomRequests:    make(chan chan *bloombits.Retrieval),
-		bloomIndexer:     can.NewBloomIndexer(chainDb, light.BloomTrieFrequency),
-		chtIndexer:       light.NewChtIndexer(chainDb, true),
-		bloomTrieIndexer: light.NewBloomTrieIndexer(chainDb, true),
+		lesCommons: lesCommons{
+			chainDb: chainDb,
+			config:  config,
+		},
+		chainConfig:    chainConfig,
+		eventMux:       ctx.EventMux,
+		peers:          peers,
+		reqDist:        newRequestDistributor(peers, quitSync),
+		accountManager: ctx.AccountManager,
+		engine:         can.CreateConsensusEngine(ctx, chainConfig, &config.Ethash, nil, chainDb),
+		shutdownChan:   make(chan bool),
+		networkId:      config.NetworkId,
+		bloomRequests:  make(chan chan *bloombits.Retrieval),
+		bloomIndexer:   can.NewBloomIndexer(chainDb, light.BloomTrieFrequency, light.HelperTrieConfirmations),
 	}
 
 	leth.relay = NewLesTxRelay(peers, leth.reqDist)
 	leth.serverPool = newServerPool(chainDb, quitSync, &leth.wg)
 	leth.retriever = newRetrieveManager(peers, leth.reqDist, leth.serverPool)
-	leth.odr = NewLesOdr(chainDb, leth.chtIndexer, leth.bloomTrieIndexer, leth.bloomIndexer, leth.retriever)
+
+	leth.odr = NewLesOdr(chainDb, leth.retriever)
+	leth.chtIndexer = light.NewChtIndexer(chainDb, true, leth.odr)
+	leth.bloomTrieIndexer = light.NewBloomTrieIndexer(chainDb, true, leth.odr)
+	leth.odr.SetIndexers(leth.chtIndexer, leth.bloomTrieIndexer, leth.bloomIndexer)
+
 	if leth.blockchain, err = light.NewLightChain(leth.odr, leth.chainConfig, leth.engine); err != nil {
 		return nil, err
 	}
+	leth.bloomIndexer.AddChildIndexer(leth.bloomTrieIndexer)
+	leth.chtIndexer.Start(leth.blockchain)
 	leth.bloomIndexer.Start(leth.blockchain)
+
 	if compat, ok := genesisErr.(*params.ConfigCompatError); ok {
 		log4j.Warn("Rewinding chain to upgrade configuration", "err", compat)
 		leth.blockchain.SetHead(compat.RewindTo)
@@ -106,13 +112,13 @@ func New(ctx *node.ServiceContext, config *can.Config) (*LightCANChain, error) {
 	}
 
 	leth.txPool = light.NewTxPool(leth.chainConfig, leth.blockchain, leth.relay)
-	if leth.protocolManager, err = NewProtocolManager(leth.chainConfig, true, ClientProtocolVersions, config.NetworkId, leth.eventMux, leth.engine, leth.peers, leth.blockchain, nil, chainDb, leth.odr, leth.relay, leth.serverPool, quitSync, &leth.wg); err != nil {
+	if leth.protocolManager, err = NewProtocolManager(leth.chainConfig, true, config.NetworkId, leth.eventMux, leth.engine, leth.peers, leth.blockchain, nil, chainDb, leth.odr, leth.relay, leth.serverPool, quitSync, &leth.wg); err != nil {
 		return nil, err
 	}
 	leth.ApiBackend = &LcsApiBackend{leth, nil}
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
-		gpoParams.Default = config.GasPrice
+		gpoParams.Default = config.MinerGasPrice
 	}
 	leth.ApiBackend.gpo = gasprice.NewOracle(leth.ApiBackend, gpoParams)
 	return leth, nil
@@ -182,12 +188,12 @@ func (s *LightCANChain) ResetWithGenesisBlock(gb *types.Block) {
 func (s *LightCANChain) BlockChain() *light.LightChain      { return s.blockchain }
 func (s *LightCANChain) TxPool() *light.TxPool              { return s.txPool }
 func (s *LightCANChain) Engine() consensus.Engine           { return s.engine }
-func (s *LightCANChain) LcsVersion() int                    { return int(s.protocolManager.SubProtocols[0].Version) }
+func (s *LightCANChain) LcsVersion() int                    { return int(ClientProtocolVersions[0]) }
 func (s *LightCANChain) Downloader() *downloader.Downloader { return s.protocolManager.downloader }
 func (s *LightCANChain) EventMux() *event.TypeMux           { return s.eventMux }
 
 func (s *LightCANChain) Protocols() []p2p.Protocol {
-	return s.protocolManager.SubProtocols
+	return s.makeProtocols(ClientProtocolVersions)
 }
 
 func (s *LightCANChain) Start(srvr *p2p.Server) error {
@@ -202,15 +208,8 @@ func (s *LightCANChain) Start(srvr *p2p.Server) error {
 
 func (s *LightCANChain) Stop() error {
 	s.odr.Stop()
-	if s.bloomIndexer != nil {
-		s.bloomIndexer.Close()
-	}
-	if s.chtIndexer != nil {
-		s.chtIndexer.Close()
-	}
-	if s.bloomTrieIndexer != nil {
-		s.bloomTrieIndexer.Close()
-	}
+	s.bloomIndexer.Close()
+	s.chtIndexer.Close()
 	s.blockchain.Stop()
 	s.protocolManager.Stop()
 	s.txPool.Stop()

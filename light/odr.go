@@ -2,6 +2,7 @@ package light
 
 import (
 	"context"
+	"errors"
 	"math/big"
 
 	"github.com/5uwifi/canchain/candb"
@@ -12,6 +13,8 @@ import (
 )
 
 var NoOdr = context.Background()
+
+var ErrNoPeers = errors.New("no suitable peers available")
 
 type OdrBackend interface {
 	Database() candb.Database

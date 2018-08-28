@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unsafe"
 
@@ -225,6 +226,7 @@ type dataset struct {
 	mmap    mmap.MMap
 	dataset []uint32
 	once    sync.Once
+	done    uint32
 }
 
 func newDataset(epoch uint64) interface{} {
@@ -233,6 +235,8 @@ func newDataset(epoch uint64) interface{} {
 
 func (d *dataset) generate(dir string, limit int, test bool) {
 	d.once.Do(func() {
+		defer atomic.StoreUint32(&d.done, 1)
+
 		csize := cacheSize(d.epoch*epochLength + 1)
 		dsize := datasetSize(d.epoch*epochLength + 1)
 		seed := seedHash(d.epoch*epochLength + 1)
@@ -246,6 +250,8 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 
 			d.dataset = make([]uint32, dsize/4)
 			generateDataset(d.dataset, d.epoch, cache)
+
+			return
 		}
 		var endian string
 		if !isLittleEndian() {
@@ -280,6 +286,10 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 			os.Remove(path)
 		}
 	})
+}
+
+func (d *dataset) generated() bool {
+	return atomic.LoadUint32(&d.done) == 1
 }
 
 func (d *dataset) finalizer() {
@@ -482,18 +492,28 @@ func (ethash *Ethash) cache(block uint64) *cache {
 	return current
 }
 
-func (ethash *Ethash) dataset(block uint64) *dataset {
+func (ethash *Ethash) dataset(block uint64, async bool) *dataset {
 	epoch := block / epochLength
 	currentI, futureI := ethash.datasets.get(epoch)
 	current := currentI.(*dataset)
 
-	current.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
+	if async && !current.generated() {
+		go func() {
+			current.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
 
-	if futureI != nil {
-		future := futureI.(*dataset)
-		go future.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
+			if futureI != nil {
+				future := futureI.(*dataset)
+				future.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
+			}
+		}()
+	} else {
+		current.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
+
+		if futureI != nil {
+			future := futureI.(*dataset)
+			go future.generate(ethash.config.DatasetDir, ethash.config.DatasetsOnDisk, ethash.config.PowMode == ModeTest)
+		}
 	}
-
 	return current
 }
 

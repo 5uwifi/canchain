@@ -8,7 +8,9 @@ import (
 	"io"
 	"math/big"
 	"os"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/hexutil"
@@ -16,7 +18,6 @@ import (
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/lib/trie"
 	"github.com/5uwifi/canchain/params"
@@ -66,36 +67,13 @@ func NewPrivateMinerAPI(e *CANChain) *PrivateMinerAPI {
 
 func (api *PrivateMinerAPI) Start(threads *int) error {
 	if threads == nil {
-		threads = new(int)
-	} else if *threads == 0 {
-		*threads = -1
+		return api.e.StartMining(runtime.NumCPU())
 	}
-	type threaded interface {
-		SetThreads(threads int)
-	}
-	if th, ok := api.e.engine.(threaded); ok {
-		log4j.Info("Updated mining threads", "threads", *threads)
-		th.SetThreads(*threads)
-	}
-	if !api.e.IsMining() {
-		api.e.lock.RLock()
-		price := api.e.gasPrice
-		api.e.lock.RUnlock()
-		api.e.txPool.SetGasPrice(price)
-		return api.e.StartMining(true)
-	}
-	return nil
+	return api.e.StartMining(*threads)
 }
 
-func (api *PrivateMinerAPI) Stop() bool {
-	type threaded interface {
-		SetThreads(threads int)
-	}
-	if th, ok := api.e.engine.(threaded); ok {
-		th.SetThreads(-1)
-	}
+func (api *PrivateMinerAPI) Stop() {
 	api.e.StopMining()
-	return true
 }
 
 func (api *PrivateMinerAPI) SetExtra(extra string) (bool, error) {
@@ -117,6 +95,10 @@ func (api *PrivateMinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
 func (api *PrivateMinerAPI) SetCanerbase(canerbase common.Address) bool {
 	api.e.SetCanerbase(canerbase)
 	return true
+}
+
+func (api *PrivateMinerAPI) SetRecommitInterval(interval int) {
+	api.e.Miner().SetRecommitInterval(time.Duration(interval) * time.Millisecond)
 }
 
 func (api *PrivateMinerAPI) GetHashrate() uint64 {

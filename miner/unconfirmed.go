@@ -9,8 +9,10 @@ import (
 	"github.com/5uwifi/canchain/lib/log4j"
 )
 
-type headerRetriever interface {
+type chainRetriever interface {
 	GetHeaderByNumber(number uint64) *types.Header
+
+	GetBlockByNumber(number uint64) *types.Block
 }
 
 type unconfirmedBlock struct {
@@ -19,13 +21,13 @@ type unconfirmedBlock struct {
 }
 
 type unconfirmedBlocks struct {
-	chain  headerRetriever
+	chain  chainRetriever
 	depth  uint
 	blocks *ring.Ring
 	lock   sync.RWMutex
 }
 
-func newUnconfirmedBlocks(chain headerRetriever, depth uint) *unconfirmedBlocks {
+func newUnconfirmedBlocks(chain chainRetriever, depth uint) *unconfirmedBlocks {
 	return &unconfirmedBlocks{
 		chain: chain,
 		depth: depth,
@@ -67,7 +69,22 @@ func (set *unconfirmedBlocks) Shift(height uint64) {
 		case header.Hash() == next.hash:
 			log4j.Info("🔗 block reached canonical chain", "number", next.index, "hash", next.hash)
 		default:
-			log4j.Info("⑂ block  became a side fork", "number", next.index, "hash", next.hash)
+			included := false
+			for number := next.index; !included && number < next.index+uint64(set.depth) && number <= height; number++ {
+				if block := set.chain.GetBlockByNumber(number); block != nil {
+					for _, uncle := range block.Uncles() {
+						if uncle.Hash() == next.hash {
+							included = true
+							break
+						}
+					}
+				}
+			}
+			if included {
+				log4j.Info("⑂ block became an uncle", "number", next.index, "hash", next.hash)
+			} else {
+				log4j.Info("😱 block lost", "number", next.index, "hash", next.hash)
+			}
 		}
 		if set.blocks.Value == set.blocks.Next().Value {
 			set.blocks = nil

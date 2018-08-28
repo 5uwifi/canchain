@@ -205,7 +205,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, interactor, err := DeployInteractor(auth, sim, "Deploy string")
 			if err != nil {
@@ -242,7 +242,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, getter, err := DeployGetter(auth, sim)
 			if err != nil {
@@ -271,7 +271,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, tupler, err := DeployTupler(auth, sim)
 			if err != nil {
@@ -309,7 +309,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, slicer, err := DeploySlicer(auth, sim)
 			if err != nil {
@@ -340,7 +340,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, defaulter, err := DeployDefaulter(auth, sim)
 			if err != nil {
@@ -370,7 +370,7 @@ var bindTests = []struct {
 		`6060604052609f8060106000396000f3606060405260e060020a6000350463f97a60058114601a575b005b600060605260c0604052600d60809081527f4920646f6e27742065786973740000000000000000000000000000000000000060a052602060c0908152600d60e081905281906101009060a09080838184600060046012f15050815172ffffffffffffffffffffffffffffffffffffff1916909152505060405161012081900392509050f3`,
 		`[{"constant":true,"inputs":[],"name":"String","outputs":[{"name":"","type":"string"}],"type":"function"}]`,
 		`
-			sim := backends.NewSimulatedBackend(nil)
+			sim := backends.NewSimulatedBackend(nil, uint64(10000000000))
 
 			nonexistent, err := NewNonExistent(common.Address{}, sim)
 			if err != nil {
@@ -402,7 +402,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, limiter, err := DeployFunkyGasPattern(auth, sim)
 			if err != nil {
@@ -433,7 +433,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, callfrom, err := DeployCallFrom(auth, sim)
 			if err != nil {
@@ -490,7 +490,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, underscorer, err := DeployUnderscorer(auth, sim)
 			if err != nil {
@@ -555,7 +555,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, eventer, err := DeployEventer(auth, sim)
 			if err != nil {
@@ -696,7 +696,7 @@ var bindTests = []struct {
 		`
 			key, _ := crypto.GenerateKey()
 			auth := bind.NewKeyedTransactor(key)
-			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}})
+			sim := backends.NewSimulatedBackend(kernel.GenesisAlloc{auth.From: {Balance: big.NewInt(10000000000)}}, 10000000)
 
 			_, _, testContract, err := DeployDeeplyNestedArray(auth, sim)
 			if err != nil {
@@ -745,7 +745,7 @@ func TestBindings(t *testing.T) {
 	if !common.FileExist(gocmd) {
 		t.Skip("go sdk not found for testing")
 	}
-	linkTestCode := fmt.Sprintf("package linktest\nfunc CheckSymlinks(){\nfmt.Println(backends.NewSimulatedBackend(nil))\n}")
+	linkTestCode := fmt.Sprintf("package linktest\nfunc CheckSymlinks(){\nfmt.Println(backends.NewSimulatedBackend(nil,uint64(10000000000)))\n}")
 	linkTestDeps, err := imports.Process(os.TempDir(), []byte(linkTestCode), nil)
 	if err != nil {
 		t.Fatalf("failed check for goimports symlink bug: %v", err)

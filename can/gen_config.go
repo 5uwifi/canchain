@@ -31,10 +31,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		TrieCache               int
 		TrieTimeout             time.Duration
 		Canerbase               common.Address `toml:",omitempty"`
-		MinerThreads            int            `toml:",omitempty"`
 		MinerNotify             []string       `toml:",omitempty"`
-		ExtraData               hexutil.Bytes  `toml:",omitempty"`
-		GasPrice                *big.Int
+		MinerExtraData          hexutil.Bytes  `toml:",omitempty"`
+		MinerGasPrice           *big.Int
+		MinerRecommit           time.Duration
 		Ethash                  ethash.Config
 		TxPool                  kernel.TxPoolConfig
 		GPO                     gasprice.Config
@@ -54,10 +54,10 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.TrieCache = c.TrieCache
 	enc.TrieTimeout = c.TrieTimeout
 	enc.Canerbase = c.Canerbase
-	enc.MinerThreads = c.MinerThreads
 	enc.MinerNotify = c.MinerNotify
-	enc.ExtraData = c.ExtraData
-	enc.GasPrice = c.GasPrice
+	enc.MinerExtraData = c.MinerExtraData
+	enc.MinerGasPrice = c.MinerGasPrice
+	enc.MinerRecommit = c.MinerRecommit
 	enc.Ethash = c.Ethash
 	enc.TxPool = c.TxPool
 	enc.GPO = c.GPO
@@ -81,10 +81,10 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		TrieCache               *int
 		TrieTimeout             *time.Duration
 		Canerbase               *common.Address `toml:",omitempty"`
-		MinerThreads            *int            `toml:",omitempty"`
 		MinerNotify             []string        `toml:",omitempty"`
-		ExtraData               *hexutil.Bytes  `toml:",omitempty"`
-		GasPrice                *big.Int
+		MinerExtraData          *hexutil.Bytes  `toml:",omitempty"`
+		MinerGasPrice           *big.Int
+		MinerRecommit           *time.Duration
 		Ethash                  *ethash.Config
 		TxPool                  *kernel.TxPoolConfig
 		GPO                     *gasprice.Config
@@ -131,17 +131,17 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.Canerbase != nil {
 		c.Canerbase = *dec.Canerbase
 	}
-	if dec.MinerThreads != nil {
-		c.MinerThreads = *dec.MinerThreads
-	}
 	if dec.MinerNotify != nil {
 		c.MinerNotify = dec.MinerNotify
 	}
-	if dec.ExtraData != nil {
-		c.ExtraData = *dec.ExtraData
+	if dec.MinerExtraData != nil {
+		c.MinerExtraData = *dec.MinerExtraData
 	}
-	if dec.GasPrice != nil {
-		c.GasPrice = dec.GasPrice
+	if dec.MinerGasPrice != nil {
+		c.MinerGasPrice = dec.MinerGasPrice
+	}
+	if dec.MinerRecommit != nil {
+		c.MinerRecommit = *dec.MinerRecommit
 	}
 	if dec.Ethash != nil {
 		c.Ethash = *dec.Ethash

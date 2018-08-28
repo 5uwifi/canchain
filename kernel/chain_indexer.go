@@ -1,6 +1,7 @@
 package kernel
 
 import (
+	"context"
 	"encoding/binary"
 	"fmt"
 	"sync"
@@ -16,9 +17,9 @@ import (
 )
 
 type ChainIndexerBackend interface {
-	Reset(section uint64, prevHead common.Hash) error
+	Reset(ctx context.Context, section uint64, prevHead common.Hash) error
 
-	Process(header *types.Header)
+	Process(ctx context.Context, header *types.Header) error
 
 	Commit() error
 }
@@ -35,9 +36,11 @@ type ChainIndexer struct {
 	backend  ChainIndexerBackend
 	children []*ChainIndexer
 
-	active uint32
-	update chan struct{}
-	quit   chan chan error
+	active    uint32
+	update    chan struct{}
+	quit      chan chan error
+	ctx       context.Context
+	ctxCancel func()
 
 	sectionSize uint64
 	confirmsReq uint64
@@ -65,6 +68,8 @@ func NewChainIndexer(chainDb, indexDb candb.Database, backend ChainIndexerBacken
 		log:         log4j.New("type", kind),
 	}
 	c.loadValidSections()
+	c.ctx, c.ctxCancel = context.WithCancel(context.Background())
+
 	go c.updateLoop()
 
 	return c
@@ -90,6 +95,8 @@ func (c *ChainIndexer) Start(chain ChainIndexerChain) {
 
 func (c *ChainIndexer) Close() error {
 	var errs []error
+
+	c.ctxCancel()
 
 	errc := make(chan error)
 	c.quit <- errc
@@ -222,6 +229,12 @@ func (c *ChainIndexer) updateLoop() {
 				c.lock.Unlock()
 				newHead, err := c.processSection(section, oldHead)
 				if err != nil {
+					select {
+					case <-c.ctx.Done():
+						<-c.quit <- nil
+						return
+					default:
+					}
 					c.log.Error("Section processing failed", "error", err)
 				}
 				c.lock.Lock()
@@ -260,7 +273,7 @@ func (c *ChainIndexer) updateLoop() {
 func (c *ChainIndexer) processSection(section uint64, lastHead common.Hash) (common.Hash, error) {
 	c.log.Trace("Processing new chain section", "section", section)
 
-	if err := c.backend.Reset(section, lastHead); err != nil {
+	if err := c.backend.Reset(c.ctx, section, lastHead); err != nil {
 		c.setValidSections(0)
 		return common.Hash{}, err
 	}
@@ -276,11 +289,12 @@ func (c *ChainIndexer) processSection(section uint64, lastHead common.Hash) (com
 		} else if header.ParentHash != lastHead {
 			return common.Hash{}, fmt.Errorf("chain reorged during section processing")
 		}
-		c.backend.Process(header)
+		if err := c.backend.Process(c.ctx, header); err != nil {
+			return common.Hash{}, err
+		}
 		lastHead = header.Hash()
 	}
 	if err := c.backend.Commit(); err != nil {
-		c.log.Error("Section commit failed", "error", err)
 		return common.Hash{}, err
 	}
 	return lastHead, nil

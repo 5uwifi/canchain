@@ -85,6 +85,10 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
 	}
+	if config.MinerGasPrice == nil || config.MinerGasPrice.Cmp(common.Big0) <= 0 {
+		log4j.Warn("Sanitizing invalid miner gas price", "provided", config.MinerGasPrice, "updated", DefaultConfig.MinerGasPrice)
+		config.MinerGasPrice = new(big.Int).Set(DefaultConfig.MinerGasPrice)
+	}
 	chainDb, err := CreateDB(ctx, config, "chaindata")
 	if err != nil {
 		return nil, err
@@ -104,10 +108,10 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 		engine:         CreateConsensusEngine(ctx, chainConfig, &config.Ethash, config.MinerNotify, chainDb),
 		shutdownChan:   make(chan bool),
 		networkID:      config.NetworkId,
-		gasPrice:       config.GasPrice,
+		gasPrice:       config.MinerGasPrice,
 		canerbase:      config.Canerbase,
 		bloomRequests:  make(chan chan *bloombits.Retrieval),
-		bloomIndexer:   NewBloomIndexer(chainDb, params.BloomBitsBlocks),
+		bloomIndexer:   NewBloomIndexer(chainDb, params.BloomBitsBlocks, bloomConfirms),
 	}
 
 	log4j.Info("Initialising CANChain protocol", "versions", ProtocolVersions, "network", config.NetworkId)
@@ -115,7 +119,7 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 	if !config.SkipBcVersionCheck {
 		bcVersion := rawdb.ReadDatabaseVersion(chainDb)
 		if bcVersion != kernel.BlockChainVersion && bcVersion != 0 {
-			return nil, fmt.Errorf("Blockchain DB version mismatch (%d / %d). Run gcan upgradedb.\n", bcVersion, kernel.BlockChainVersion)
+			return nil, fmt.Errorf("Blockchain DB version mismatch (%d / %d).\n", bcVersion, kernel.BlockChainVersion)
 		}
 		rawdb.WriteDatabaseVersion(chainDb, kernel.BlockChainVersion)
 	}
@@ -143,13 +147,13 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 		return nil, err
 	}
 
-	eth.miner = miner.New(eth, eth.chainConfig, eth.EventMux(), eth.engine)
-	eth.miner.SetExtra(makeExtraData(config.ExtraData))
+	eth.miner = miner.New(eth, eth.chainConfig, eth.EventMux(), eth.engine, config.MinerRecommit)
+	eth.miner.SetExtra(makeExtraData(config.MinerExtraData))
 
 	eth.APIBackend = &EthAPIBackend{eth, nil}
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
-		gpoParams.Default = config.GasPrice
+		gpoParams.Default = config.MinerGasPrice
 	}
 	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, gpoParams)
 
@@ -299,28 +303,53 @@ func (s *CANChain) SetCanerbase(canerbase common.Address) {
 	s.miner.SetCanerbase(canerbase)
 }
 
-func (s *CANChain) StartMining(local bool) error {
-	eb, err := s.Canerbase()
-	if err != nil {
-		log4j.Error("Cannot start mining without canerbase", "err", err)
-		return fmt.Errorf("canerbase missing: %v", err)
+func (s *CANChain) StartMining(threads int) error {
+	type threaded interface {
+		SetThreads(threads int)
 	}
-	if clique, ok := s.engine.(*clique.Clique); ok {
-		wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
-		if wallet == nil || err != nil {
-			log4j.Error("Canerbase account unavailable locally", "err", err)
-			return fmt.Errorf("signer missing: %v", err)
+	if th, ok := s.engine.(threaded); ok {
+		log4j.Info("Updated mining threads", "threads", threads)
+		if threads == 0 {
+			threads = -1
 		}
-		clique.Authorize(eb, wallet.SignHash)
+		th.SetThreads(threads)
 	}
-	if local {
+	if !s.IsMining() {
+		s.lock.RLock()
+		price := s.gasPrice
+		s.lock.RUnlock()
+		s.txPool.SetGasPrice(price)
+
+		eb, err := s.Canerbase()
+		if err != nil {
+			log4j.Error("Cannot start mining without canerbase", "err", err)
+			return fmt.Errorf("canerbase missing: %v", err)
+		}
+		if clique, ok := s.engine.(*clique.Clique); ok {
+			wallet, err := s.accountManager.Find(accounts.Account{Address: eb})
+			if wallet == nil || err != nil {
+				log4j.Error("Canerbase account unavailable locally", "err", err)
+				return fmt.Errorf("signer missing: %v", err)
+			}
+			clique.Authorize(eb, wallet.SignHash)
+		}
 		atomic.StoreUint32(&s.protocolManager.acceptTxs, 1)
+
+		go s.miner.Start(eb)
 	}
-	go s.miner.Start(eb)
 	return nil
 }
 
-func (s *CANChain) StopMining()         { s.miner.Stop() }
+func (s *CANChain) StopMining() {
+	type threaded interface {
+		SetThreads(threads int)
+	}
+	if th, ok := s.engine.(threaded); ok {
+		th.SetThreads(-1)
+	}
+	s.miner.Stop()
+}
+
 func (s *CANChain) IsMining() bool      { return s.miner.Mining() }
 func (s *CANChain) Miner() *miner.Miner { return s.miner }
 

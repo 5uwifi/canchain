@@ -91,19 +91,19 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 	return bc, nil
 }
 
-func (self *LightChain) addTrustedCheckpoint(cp trustedCheckpoint) {
+func (self *LightChain) addTrustedCheckpoint(cp TrustedCheckpoint) {
 	if self.odr.ChtIndexer() != nil {
-		StoreChtRoot(self.chainDb, cp.sectionIdx, cp.sectionHead, cp.chtRoot)
-		self.odr.ChtIndexer().AddKnownSectionHead(cp.sectionIdx, cp.sectionHead)
+		StoreChtRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.CHTRoot)
+		self.odr.ChtIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
 	}
 	if self.odr.BloomTrieIndexer() != nil {
-		StoreBloomTrieRoot(self.chainDb, cp.sectionIdx, cp.sectionHead, cp.bloomTrieRoot)
-		self.odr.BloomTrieIndexer().AddKnownSectionHead(cp.sectionIdx, cp.sectionHead)
+		StoreBloomTrieRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.BloomRoot)
+		self.odr.BloomTrieIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
 	}
 	if self.odr.BloomIndexer() != nil {
-		self.odr.BloomIndexer().AddKnownSectionHead(cp.sectionIdx, cp.sectionHead)
+		self.odr.BloomIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
 	}
-	log4j.Info("Added trusted checkpoint", "chain", cp.name, "block", (cp.sectionIdx+1)*CHTFrequencyClient-1, "hash", cp.sectionHead)
+	log4j.Info("Added trusted checkpoint", "chain", cp.name, "block", (cp.SectionIdx+1)*CHTFrequencyClient-1, "hash", cp.SectionHead)
 }
 
 func (self *LightChain) getProcInterrupt() bool {
@@ -364,19 +364,25 @@ func (self *LightChain) SyncCht(ctx context.Context) bool {
 	if self.odr.ChtIndexer() == nil {
 		return false
 	}
-	headNum := self.CurrentHeader().Number.Uint64()
-	chtCount, _, _ := self.odr.ChtIndexer().Sections()
-	if headNum+1 < chtCount*CHTFrequencyClient {
-		num := chtCount*CHTFrequencyClient - 1
-		header, err := GetHeaderByNumber(ctx, self.odr, num)
-		if header != nil && err == nil {
-			self.mu.Lock()
-			if self.hc.CurrentHeader().Number.Uint64() < header.Number.Uint64() {
-				self.hc.SetCurrentHeader(header)
-			}
-			self.mu.Unlock()
-			return true
+	head := self.CurrentHeader().Number.Uint64()
+	sections, _, _ := self.odr.ChtIndexer().Sections()
+
+	latest := sections*CHTFrequencyClient - 1
+	if clique := self.hc.Config().Clique; clique != nil {
+		latest -= latest % clique.Epoch
+	}
+	if head >= latest {
+		return false
+	}
+	if header, err := GetHeaderByNumber(ctx, self.odr, latest); header != nil && err == nil {
+		self.mu.Lock()
+		defer self.mu.Unlock()
+
+		if self.hc.CurrentHeader().Number.Uint64() < header.Number.Uint64() {
+			log4j.Info("Updated latest header based on CHT", "number", header.Number, "hash", header.Hash())
+			self.hc.SetCurrentHeader(header)
 		}
+		return true
 	}
 	return false
 }

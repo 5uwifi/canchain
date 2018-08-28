@@ -81,10 +81,10 @@ func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, stop
 func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan struct{}, found chan *types.Block) {
 	var (
 		header  = block.Header()
-		hash    = header.HashNoNonce().Bytes()
+		hash    = ethash.SealHash(header).Bytes()
 		target  = new(big.Int).Div(two256, header.Difficulty)
 		number  = header.Number.Uint64()
-		dataset = ethash.dataset(number)
+		dataset = ethash.dataset(number, false)
 	)
 	var (
 		attempts = int64(0)
@@ -164,7 +164,7 @@ func (ethash *Ethash) remote(notify []string) {
 		}
 	}
 	makeWork := func(block *types.Block) {
-		hash := block.HashNoNonce()
+		hash := ethash.SealHash(block.Header())
 
 		currentWork[0] = hash.Hex()
 		currentWork[1] = common.BytesToHash(SeedHash(block.NumberU64())).Hex()
@@ -179,19 +179,20 @@ func (ethash *Ethash) remote(notify []string) {
 			log4j.Info("Work submitted but none pending", "hash", hash)
 			return false
 		}
-
 		header := block.Header()
 		header.Nonce = nonce
 		header.MixDigest = mixDigest
-		if err := ethash.VerifySeal(nil, header); err != nil {
-			log4j.Warn("Invalid proof-of-work submitted", "hash", hash, "err", err)
+
+		start := time.Now()
+		if err := ethash.verifySeal(nil, header, true); err != nil {
+			log4j.Warn("Invalid proof-of-work submitted", "hash", hash, "elapsed", time.Since(start), "err", err)
 			return false
 		}
-
 		if ethash.resultCh == nil {
 			log4j.Warn("Ethash result channel is empty, submitted mining result is rejected")
 			return false
 		}
+		log4j.Trace("Verified correct proof-of-work", "hash", hash, "elapsed", time.Since(start))
 
 		select {
 		case ethash.resultCh <- block.WithSeal(header):

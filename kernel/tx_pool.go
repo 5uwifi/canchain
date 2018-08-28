@@ -81,6 +81,7 @@ type blockChain interface {
 }
 
 type TxPoolConfig struct {
+	Locals    []common.Address
 	NoLocals  bool
 	Journal   string
 	Rejournal time.Duration
@@ -174,6 +175,10 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain block
 		gasPrice:    new(big.Int).SetUint64(config.PriceLimit),
 	}
 	pool.locals = newAccountSet(pool.signer)
+	for _, addr := range config.Locals {
+		log4j.Info("Setting new local account", "address", addr)
+		pool.locals.add(addr)
+	}
 	pool.priced = newTxPricedList(pool.all)
 	pool.reset(nil, chain.CurrentBlock().Header())
 
@@ -427,6 +432,13 @@ func (pool *TxPool) Pending() (map[common.Address]types.Transactions, error) {
 	return pending, nil
 }
 
+func (pool *TxPool) Locals() []common.Address {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	return pool.locals.flatten()
+}
+
 func (pool *TxPool) local() map[common.Address]types.Transactions {
 	txs := make(map[common.Address]types.Transactions)
 	for addr := range pool.locals.accounts {
@@ -525,7 +537,10 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
 		return false, err
 	}
 	if local {
-		pool.locals.add(from)
+		if !pool.locals.contains(from) {
+			log4j.Info("Setting new local account", "address", from)
+			pool.locals.add(from)
+		}
 	}
 	pool.journalTx(from, tx)
 
@@ -906,6 +921,7 @@ func (a addressesByHeartbeat) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
 type accountSet struct {
 	accounts map[common.Address]struct{}
 	signer   types.Signer
+	cache    *[]common.Address
 }
 
 func newAccountSet(signer types.Signer) *accountSet {
@@ -929,6 +945,18 @@ func (as *accountSet) containsTx(tx *types.Transaction) bool {
 
 func (as *accountSet) add(addr common.Address) {
 	as.accounts[addr] = struct{}{}
+	as.cache = nil
+}
+
+func (as *accountSet) flatten() []common.Address {
+	if as.cache == nil {
+		accounts := make([]common.Address, 0, len(as.accounts))
+		for account := range as.accounts {
+			accounts = append(accounts, account)
+		}
+		as.cache = &accounts
+	}
+	return *as.cache
 }
 
 type txLookup struct {

@@ -2,12 +2,9 @@ package lcs
 
 import (
 	"container/list"
-	"errors"
 	"sync"
 	"time"
 )
-
-var ErrNoPeers = errors.New("no suitable peers available")
 
 type requestDistributor struct {
 	reqQueue         *list.List

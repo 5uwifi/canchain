@@ -48,6 +48,7 @@ var (
 		utils.EthashDatasetDirFlag,
 		utils.EthashDatasetsInMemoryFlag,
 		utils.EthashDatasetsOnDiskFlag,
+		utils.TxPoolLocalsFlag,
 		utils.TxPoolNoLocalsFlag,
 		utils.TxPoolJournalFlag,
 		utils.TxPoolRejournalFlag,
@@ -58,8 +59,6 @@ var (
 		utils.TxPoolAccountQueueFlag,
 		utils.TxPoolGlobalQueueFlag,
 		utils.TxPoolLifetimeFlag,
-		utils.FastSyncFlag,
-		utils.LightModeFlag,
 		utils.SyncModeFlag,
 		utils.GCModeFlag,
 		utils.LightServFlag,
@@ -72,12 +71,19 @@ var (
 		utils.ListenPortFlag,
 		utils.MaxPeersFlag,
 		utils.MaxPendingPeersFlag,
-		utils.CanerbaseFlag,
-		utils.GasPriceFlag,
 		utils.MiningEnabledFlag,
 		utils.MinerThreadsFlag,
+		utils.MinerLegacyThreadsFlag,
 		utils.MinerNotifyFlag,
-		utils.TargetGasLimitFlag,
+		utils.MinerGasTargetFlag,
+		utils.MinerLegacyGasTargetFlag,
+		utils.MinerGasPriceFlag,
+		utils.MinerLegacyGasPriceFlag,
+		utils.MinerCanerbaseFlag,
+		utils.MinerLegacyCanerbaseFlag,
+		utils.MinerExtraDataFlag,
+		utils.MinerLegacyExtraDataFlag,
+		utils.MinerRecommitIntervalFlag,
 		utils.NATFlag,
 		utils.NoDiscoverFlag,
 		utils.DiscoveryV5Flag,
@@ -98,7 +104,6 @@ var (
 		utils.NoCompactionFlag,
 		utils.GpoBlocksFlag,
 		utils.GpoPercentileFlag,
-		utils.ExtraDataFlag,
 		configFileFlag,
 	}
 
@@ -277,23 +282,24 @@ func startNode(ctx *cli.Context, stack *node.Node) {
 		}
 	}()
 	if ctx.GlobalBool(utils.MiningEnabledFlag.Name) || ctx.GlobalBool(utils.DeveloperFlag.Name) {
-		if ctx.GlobalBool(utils.LightModeFlag.Name) || ctx.GlobalString(utils.SyncModeFlag.Name) == "light" {
+		if ctx.GlobalString(utils.SyncModeFlag.Name) == "light" {
 			utils.Fatalf("Light clients do not support mining")
 		}
 		var canchain *can.CANChain
 		if err := stack.Service(&canchain); err != nil {
 			utils.Fatalf("CANChain service not running: %v", err)
 		}
-		if threads := ctx.GlobalInt(utils.MinerThreadsFlag.Name); threads > 0 {
-			type threaded interface {
-				SetThreads(threads int)
-			}
-			if th, ok := canchain.Engine().(threaded); ok {
-				th.SetThreads(threads)
-			}
+		gasprice := utils.GlobalBig(ctx, utils.MinerLegacyGasPriceFlag.Name)
+		if ctx.IsSet(utils.MinerGasPriceFlag.Name) {
+			gasprice = utils.GlobalBig(ctx, utils.MinerGasPriceFlag.Name)
 		}
-		canchain.TxPool().SetGasPrice(utils.GlobalBig(ctx, utils.GasPriceFlag.Name))
-		if err := canchain.StartMining(true); err != nil {
+		canchain.TxPool().SetGasPrice(gasprice)
+
+		threads := ctx.GlobalInt(utils.MinerLegacyThreadsFlag.Name)
+		if ctx.GlobalIsSet(utils.MinerThreadsFlag.Name) {
+			threads = ctx.GlobalInt(utils.MinerThreadsFlag.Name)
+		}
+		if err := canchain.StartMining(threads); err != nil {
 			utils.Fatalf("Failed to start mining: %v", err)
 		}
 	}

@@ -44,9 +44,9 @@ type SimulatedBackend struct {
 	config *params.ChainConfig
 }
 
-func NewSimulatedBackend(alloc kernel.GenesisAlloc) *SimulatedBackend {
+func NewSimulatedBackend(alloc kernel.GenesisAlloc, gasLimit uint64) *SimulatedBackend {
 	database := candb.NewMemDatabase()
-	genesis := kernel.Genesis{Config: params.AllEthashProtocolChanges, Alloc: alloc}
+	genesis := kernel.Genesis{Config: params.AllEthashProtocolChanges, GasLimit: gasLimit, Alloc: alloc}
 	genesis.MustCommit(database)
 	blockchain, _ := kernel.NewBlockChain(database, nil, genesis.Config, ethash.NewFaker(), vm.Config{})
 

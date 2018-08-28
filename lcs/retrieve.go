@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common/mclock"
+	"github.com/5uwifi/canchain/light"
 )
 
 var (
@@ -161,7 +162,7 @@ func (r *sentReq) stateRequesting() reqStateFn {
 				if r.waiting() {
 					return r.stateNoMorePeers
 				}
-				r.stop(ErrNoPeers)
+				r.stop(light.ErrNoPeers)
 				return nil
 			}
 		case rpSoftTimeout:

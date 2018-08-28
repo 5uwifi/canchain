@@ -16,14 +16,11 @@ type LesOdr struct {
 	stop                                       chan struct{}
 }
 
-func NewLesOdr(db candb.Database, chtIndexer, bloomTrieIndexer, bloomIndexer *kernel.ChainIndexer, retriever *retrieveManager) *LesOdr {
+func NewLesOdr(db candb.Database, retriever *retrieveManager) *LesOdr {
 	return &LesOdr{
-		db:               db,
-		chtIndexer:       chtIndexer,
-		bloomTrieIndexer: bloomTrieIndexer,
-		bloomIndexer:     bloomIndexer,
-		retriever:        retriever,
-		stop:             make(chan struct{}),
+		db:        db,
+		retriever: retriever,
+		stop:      make(chan struct{}),
 	}
 }
 
@@ -33,6 +30,12 @@ func (odr *LesOdr) Stop() {
 
 func (odr *LesOdr) Database() candb.Database {
 	return odr.db
+}
+
+func (odr *LesOdr) SetIndexers(chtIndexer, bloomTrieIndexer, bloomIndexer *kernel.ChainIndexer) {
+	odr.chtIndexer = chtIndexer
+	odr.bloomTrieIndexer = bloomTrieIndexer
+	odr.bloomIndexer = bloomIndexer
 }
 
 func (odr *LesOdr) ChtIndexer() *kernel.ChainIndexer {

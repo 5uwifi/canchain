@@ -59,7 +59,7 @@ func (r *testerChainReader) GetHeaderByNumber(number uint64) *types.Header {
 	if number == 0 {
 		return rawdb.ReadHeader(r.db, rawdb.ReadCanonicalHash(r.db, 0), 0)
 	}
-	panic("not supported")
+	return nil
 }
 
 func TestVoting(t *testing.T) {

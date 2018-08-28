@@ -15,6 +15,8 @@ import (
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/consensus"
 	"github.com/5uwifi/canchain/lib/consensus/misc"
+	"github.com/5uwifi/canchain/lib/crypto/sha3"
+	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
 )
 
@@ -358,6 +360,10 @@ func calcDifficultyFrontier(time uint64, parent *types.Header) *big.Int {
 }
 
 func (ethash *Ethash) VerifySeal(chain consensus.ChainReader, header *types.Header) error {
+	return ethash.verifySeal(chain, header, false)
+}
+
+func (ethash *Ethash) verifySeal(chain consensus.ChainReader, header *types.Header, fulldag bool) error {
 	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
 		time.Sleep(ethash.fakeDelay)
 		if ethash.fakeFail == header.Number.Uint64() {
@@ -366,21 +372,38 @@ func (ethash *Ethash) VerifySeal(chain consensus.ChainReader, header *types.Head
 		return nil
 	}
 	if ethash.shared != nil {
-		return ethash.shared.VerifySeal(chain, header)
+		return ethash.shared.verifySeal(chain, header, fulldag)
 	}
 	if header.Difficulty.Sign() <= 0 {
 		return errInvalidDifficulty
 	}
 	number := header.Number.Uint64()
 
-	cache := ethash.cache(number)
-	size := datasetSize(number)
-	if ethash.config.PowMode == ModeTest {
-		size = 32 * 1024
-	}
-	digest, result := hashimotoLight(size, cache.cache, header.HashNoNonce().Bytes(), header.Nonce.Uint64())
-	runtime.KeepAlive(cache)
+	var (
+		digest []byte
+		result []byte
+	)
+	if fulldag {
+		dataset := ethash.dataset(number, true)
+		if dataset.generated() {
+			digest, result = hashimotoFull(dataset.dataset, ethash.SealHash(header).Bytes(), header.Nonce.Uint64())
 
+			runtime.KeepAlive(dataset)
+		} else {
+			fulldag = false
+		}
+	}
+	if !fulldag {
+		cache := ethash.cache(number)
+
+		size := datasetSize(number)
+		if ethash.config.PowMode == ModeTest {
+			size = 32 * 1024
+		}
+		digest, result = hashimotoLight(size, cache.cache, ethash.SealHash(header).Bytes(), header.Nonce.Uint64())
+
+		runtime.KeepAlive(cache)
+	}
 	if !bytes.Equal(header.MixDigest[:], digest) {
 		return errInvalidMixDigest
 	}
@@ -405,6 +428,28 @@ func (ethash *Ethash) Finalize(chain consensus.ChainReader, header *types.Header
 	header.Root = state.IntermediateRoot(chain.Config().IsEIP158(header.Number))
 
 	return types.NewBlock(header, txs, uncles, receipts), nil
+}
+
+func (ethash *Ethash) SealHash(header *types.Header) (hash common.Hash) {
+	hasher := sha3.NewKeccak256()
+
+	rlp.Encode(hasher, []interface{}{
+		header.ParentHash,
+		header.UncleHash,
+		header.Coinbase,
+		header.Root,
+		header.TxHash,
+		header.ReceiptHash,
+		header.Bloom,
+		header.Difficulty,
+		header.Number,
+		header.GasLimit,
+		header.GasUsed,
+		header.Time,
+		header.Extra,
+	})
+	hasher.Sum(hash[:0])
+	return hash
 }
 
 var (

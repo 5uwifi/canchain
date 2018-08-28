@@ -7,16 +7,19 @@ import (
 	"github.com/5uwifi/canchain/kernel/types"
 )
 
-type noopHeaderRetriever struct{}
+type noopChainRetriever struct{}
 
-func (r *noopHeaderRetriever) GetHeaderByNumber(number uint64) *types.Header {
+func (r *noopChainRetriever) GetHeaderByNumber(number uint64) *types.Header {
+	return nil
+}
+func (r *noopChainRetriever) GetBlockByNumber(number uint64) *types.Block {
 	return nil
 }
 
 func TestUnconfirmedInsertBounds(t *testing.T) {
 	limit := uint(10)
 
-	pool := newUnconfirmedBlocks(new(noopHeaderRetriever), limit)
+	pool := newUnconfirmedBlocks(new(noopChainRetriever), limit)
 	for depth := uint64(0); depth < 2*uint64(limit); depth++ {
 		for i := 0; i < int(depth); i++ {
 			pool.Insert(depth, common.Hash([32]byte{byte(depth), byte(i)}))
@@ -32,7 +35,7 @@ func TestUnconfirmedInsertBounds(t *testing.T) {
 func TestUnconfirmedShifts(t *testing.T) {
 	limit, start := uint(10), uint64(25)
 
-	pool := newUnconfirmedBlocks(new(noopHeaderRetriever), limit)
+	pool := newUnconfirmedBlocks(new(noopChainRetriever), limit)
 	for depth := start; depth < start+uint64(limit); depth++ {
 		pool.Insert(depth, common.Hash([32]byte{byte(depth)}))
 	}

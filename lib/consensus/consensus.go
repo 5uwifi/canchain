@@ -42,6 +42,8 @@ type Engine interface {
 
 	Seal(chain ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error)
 
+	SealHash(header *types.Header) common.Hash
+
 	CalcDifficulty(chain ChainReader, time uint64, parent *types.Header) *big.Int
 
 	APIs(chain ChainReader) []rpc.API

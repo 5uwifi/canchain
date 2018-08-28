@@ -127,12 +127,12 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 	} else {
 		blockchain, _ := kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{})
 
-		chtIndexer := light.NewChtIndexer(db, false)
+		chtIndexer := light.NewChtIndexer(db, false, nil)
 		chtIndexer.Start(blockchain)
 
-		bbtIndexer := light.NewBloomTrieIndexer(db, false)
+		bbtIndexer := light.NewBloomTrieIndexer(db, false, nil)
 
-		bloomIndexer := can.NewBloomIndexer(db, params.BloomBitsBlocks)
+		bloomIndexer := can.NewBloomIndexer(db, params.BloomBitsBlocks, light.HelperTrieProcessConfirmations)
 		bloomIndexer.AddChildIndexer(bbtIndexer)
 		bloomIndexer.Start(blockchain)
 
@@ -143,18 +143,12 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 		chain = blockchain
 	}
 
-	var protocolVersions []uint
-	if lightSync {
-		protocolVersions = ClientProtocolVersions
-	} else {
-		protocolVersions = ServerProtocolVersions
-	}
-	pm, err := NewProtocolManager(gspec.Config, lightSync, protocolVersions, NetworkId, evmux, engine, peers, chain, nil, db, odr, nil, nil, make(chan struct{}), new(sync.WaitGroup))
+	pm, err := NewProtocolManager(gspec.Config, lightSync, NetworkId, evmux, engine, peers, chain, nil, db, odr, nil, nil, make(chan struct{}), new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
 	if !lightSync {
-		srv := &LcsServer{protocolManager: pm}
+		srv := &LcsServer{lesCommons: lesCommons{protocolManager: pm}}
 		pm.server = srv
 
 		srv.defParams = &flowcontrol.ServerParams{

@@ -1,6 +1,7 @@
 package can
 
 import (
+	"context"
 	"time"
 
 	"github.com/5uwifi/canchain/candb"
@@ -60,39 +61,37 @@ const (
 )
 
 type BloomIndexer struct {
-	size uint64
-
-	db  candb.Database
-	gen *bloombits.Generator
-
+	size    uint64
+	db      candb.Database
+	gen     *bloombits.Generator
 	section uint64
 	head    common.Hash
 }
 
-func NewBloomIndexer(db candb.Database, size uint64) *kernel.ChainIndexer {
+func NewBloomIndexer(db candb.Database, size, confReq uint64) *kernel.ChainIndexer {
 	backend := &BloomIndexer{
 		db:   db,
 		size: size,
 	}
 	table := candb.NewTable(db, string(rawdb.BloomBitsIndexPrefix))
 
-	return kernel.NewChainIndexer(db, table, backend, size, bloomConfirms, bloomThrottling, "bloombits")
+	return kernel.NewChainIndexer(db, table, backend, size, confReq, bloomThrottling, "bloombits")
 }
 
-func (b *BloomIndexer) Reset(section uint64, lastSectionHead common.Hash) error {
+func (b *BloomIndexer) Reset(ctx context.Context, section uint64, lastSectionHead common.Hash) error {
 	gen, err := bloombits.NewGenerator(uint(b.size))
 	b.gen, b.section, b.head = gen, section, common.Hash{}
 	return err
 }
 
-func (b *BloomIndexer) Process(header *types.Header) {
+func (b *BloomIndexer) Process(ctx context.Context, header *types.Header) error {
 	b.gen.AddBloom(uint(header.Number.Uint64()-b.section*b.size), header.Bloom)
 	b.head = header.Hash()
+	return nil
 }
 
 func (b *BloomIndexer) Commit() error {
 	batch := b.db.NewBatch()
-
 	for i := 0; i < types.BloomBitLength; i++ {
 		bits, err := b.gen.Bitset(uint(i))
 		if err != nil {

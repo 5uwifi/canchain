@@ -21,21 +21,19 @@ import (
 )
 
 type LcsServer struct {
-	config          *can.Config
-	protocolManager *ProtocolManager
-	fcManager       *flowcontrol.ClientManager
-	fcCostStats     *requestCostStats
-	defParams       *flowcontrol.ServerParams
-	lesTopics       []discv5.Topic
-	privateKey      *ecdsa.PrivateKey
-	quitSync        chan struct{}
+	lesCommons
 
-	chtIndexer, bloomTrieIndexer *kernel.ChainIndexer
+	fcManager   *flowcontrol.ClientManager
+	fcCostStats *requestCostStats
+	defParams   *flowcontrol.ServerParams
+	lesTopics   []discv5.Topic
+	privateKey  *ecdsa.PrivateKey
+	quitSync    chan struct{}
 }
 
 func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 	quitSync := make(chan struct{})
-	pm, err := NewProtocolManager(eth.BlockChain().Config(), false, ServerProtocolVersions, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
+	pm, err := NewProtocolManager(eth.BlockChain().Config(), false, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
@@ -46,13 +44,17 @@ func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 	}
 
 	srv := &LcsServer{
-		config:           config,
-		protocolManager:  pm,
-		quitSync:         quitSync,
-		lesTopics:        lesTopics,
-		chtIndexer:       light.NewChtIndexer(eth.ChainDb(), false),
-		bloomTrieIndexer: light.NewBloomTrieIndexer(eth.ChainDb(), false),
+		lesCommons: lesCommons{
+			config:           config,
+			chainDb:          eth.ChainDb(),
+			chtIndexer:       light.NewChtIndexer(eth.ChainDb(), false, nil),
+			bloomTrieIndexer: light.NewBloomTrieIndexer(eth.ChainDb(), false, nil),
+			protocolManager:  pm,
+		},
+		quitSync:  quitSync,
+		lesTopics: lesTopics,
 	}
+
 	logger := log4j.New()
 
 	chtV1SectionCount, _, _ := srv.chtIndexer.Sections()
@@ -85,7 +87,7 @@ func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 }
 
 func (s *LcsServer) Protocols() []p2p.Protocol {
-	return s.protocolManager.SubProtocols
+	return s.makeProtocols(ServerProtocolVersions)
 }
 
 func (s *LcsServer) Start(srvr *p2p.Server) {

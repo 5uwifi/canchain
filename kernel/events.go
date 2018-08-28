@@ -11,8 +11,6 @@ type PendingLogsEvent struct {
 	Logs []*types.Log
 }
 
-type PendingStateEvent struct{}
-
 type NewMinedBlockEvent struct{ Block *types.Block }
 
 type RemovedLogsEvent struct{ Logs []*types.Log }

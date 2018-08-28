@@ -3,6 +3,7 @@ package miner
 import (
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/5uwifi/canchain/can/downloader"
 	"github.com/5uwifi/canchain/common"
@@ -32,13 +33,13 @@ type Miner struct {
 	shouldStart int32
 }
 
-func New(eth Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine) *Miner {
+func New(eth Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, recommit time.Duration) *Miner {
 	miner := &Miner{
 		eth:      eth,
 		mux:      mux,
 		engine:   engine,
 		exitCh:   make(chan struct{}),
-		worker:   newWorker(config, engine, eth, mux),
+		worker:   newWorker(config, engine, eth, mux, recommit),
 		canStart: 1,
 	}
 	go miner.update()
@@ -118,6 +119,10 @@ func (self *Miner) SetExtra(extra []byte) error {
 	}
 	self.worker.setExtra(extra)
 	return nil
+}
+
+func (self *Miner) SetRecommitInterval(interval time.Duration) {
+	self.worker.setRecommitInterval(interval)
 }
 
 func (self *Miner) Pending() (*types.Block, *state.StateDB) {
