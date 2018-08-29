@@ -76,26 +76,27 @@ func New(ctx *node.ServiceContext, config *can.Config) (*LightCANChain, error) {
 		lesCommons: lesCommons{
 			chainDb: chainDb,
 			config:  config,
+			iConfig: light.DefaultClientIndexerConfig,
 		},
 		chainConfig:    chainConfig,
 		eventMux:       ctx.EventMux,
 		peers:          peers,
 		reqDist:        newRequestDistributor(peers, quitSync),
 		accountManager: ctx.AccountManager,
-		engine:         can.CreateConsensusEngine(ctx, chainConfig, &config.Ethash, nil, chainDb),
+		engine:         can.CreateConsensusEngine(ctx, chainConfig, &config.Ethash, nil, false, chainDb),
 		shutdownChan:   make(chan bool),
 		networkId:      config.NetworkId,
 		bloomRequests:  make(chan chan *bloombits.Retrieval),
-		bloomIndexer:   can.NewBloomIndexer(chainDb, light.BloomTrieFrequency, light.HelperTrieConfirmations),
+		bloomIndexer:   can.NewBloomIndexer(chainDb, params.BloomBitsBlocksClient, params.HelperTrieConfirmations),
 	}
 
 	leth.relay = NewLesTxRelay(peers, leth.reqDist)
 	leth.serverPool = newServerPool(chainDb, quitSync, &leth.wg)
 	leth.retriever = newRetrieveManager(peers, leth.reqDist, leth.serverPool)
 
-	leth.odr = NewLesOdr(chainDb, leth.retriever)
-	leth.chtIndexer = light.NewChtIndexer(chainDb, true, leth.odr)
-	leth.bloomTrieIndexer = light.NewBloomTrieIndexer(chainDb, true, leth.odr)
+	leth.odr = NewLesOdr(chainDb, light.DefaultClientIndexerConfig, leth.retriever)
+	leth.chtIndexer = light.NewChtIndexer(chainDb, leth.odr, params.CHTFrequencyClient, params.HelperTrieConfirmations)
+	leth.bloomTrieIndexer = light.NewBloomTrieIndexer(chainDb, leth.odr, params.BloomBitsBlocksClient, params.BloomTrieFrequency)
 	leth.odr.SetIndexers(leth.chtIndexer, leth.bloomTrieIndexer, leth.bloomIndexer)
 
 	if leth.blockchain, err = light.NewLightChain(leth.odr, leth.chainConfig, leth.engine); err != nil {
@@ -112,7 +113,7 @@ func New(ctx *node.ServiceContext, config *can.Config) (*LightCANChain, error) {
 	}
 
 	leth.txPool = light.NewTxPool(leth.chainConfig, leth.blockchain, leth.relay)
-	if leth.protocolManager, err = NewProtocolManager(leth.chainConfig, true, config.NetworkId, leth.eventMux, leth.engine, leth.peers, leth.blockchain, nil, chainDb, leth.odr, leth.relay, leth.serverPool, quitSync, &leth.wg); err != nil {
+	if leth.protocolManager, err = NewProtocolManager(leth.chainConfig, light.DefaultClientIndexerConfig, true, config.NetworkId, leth.eventMux, leth.engine, leth.peers, leth.blockchain, nil, chainDb, leth.odr, leth.relay, leth.serverPool, quitSync, &leth.wg); err != nil {
 		return nil, err
 	}
 	leth.ApiBackend = &LcsApiBackend{leth, nil}
@@ -197,8 +198,8 @@ func (s *LightCANChain) Protocols() []p2p.Protocol {
 }
 
 func (s *LightCANChain) Start(srvr *p2p.Server) error {
-	s.startBloomHandlers()
 	log4j.Warn("Light client mode is an experimental feature")
+	s.startBloomHandlers(params.BloomBitsBlocksClient)
 	s.netRPCService = canapi.NewPublicNetAPI(srvr, s.networkId)
 	protocolVersion := AdvertiseProtocolVersions[0]
 	s.serverPool.start(srvr, lcsTopic(s.blockchain.Genesis().Hash(), protocolVersion))

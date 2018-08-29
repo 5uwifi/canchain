@@ -18,6 +18,7 @@ import (
 	"github.com/5uwifi/canchain/lib/p2p/discv5"
 	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/light"
+	"github.com/5uwifi/canchain/params"
 )
 
 type LcsServer struct {
@@ -33,7 +34,7 @@ type LcsServer struct {
 
 func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 	quitSync := make(chan struct{})
-	pm, err := NewProtocolManager(eth.BlockChain().Config(), false, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
+	pm, err := NewProtocolManager(eth.BlockChain().Config(), light.DefaultServerIndexerConfig, false, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
@@ -47,8 +48,9 @@ func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 		lesCommons: lesCommons{
 			config:           config,
 			chainDb:          eth.ChainDb(),
-			chtIndexer:       light.NewChtIndexer(eth.ChainDb(), false, nil),
-			bloomTrieIndexer: light.NewBloomTrieIndexer(eth.ChainDb(), false, nil),
+			iConfig:          light.DefaultServerIndexerConfig,
+			chtIndexer:       light.NewChtIndexer(eth.ChainDb(), nil, params.CHTFrequencyServer, params.HelperTrieProcessConfirmations),
+			bloomTrieIndexer: light.NewBloomTrieIndexer(eth.ChainDb(), nil, params.BloomBitsBlocks, params.BloomTrieFrequency),
 			protocolManager:  pm,
 		},
 		quitSync:  quitSync,
@@ -58,12 +60,12 @@ func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 	logger := log4j.New()
 
 	chtV1SectionCount, _, _ := srv.chtIndexer.Sections()
-	chtV2SectionCount := chtV1SectionCount / (light.CHTFrequencyClient / light.CHTFrequencyServer)
+	chtV2SectionCount := chtV1SectionCount / (params.CHTFrequencyClient / params.CHTFrequencyServer)
 	if chtV2SectionCount != 0 {
 		chtLastSection := chtV2SectionCount - 1
-		chtLastSectionV1 := (chtLastSection+1)*(light.CHTFrequencyClient/light.CHTFrequencyServer) - 1
+		chtLastSectionV1 := (chtLastSection+1)*(params.CHTFrequencyClient/params.CHTFrequencyServer) - 1
 		chtSectionHead := srv.chtIndexer.SectionHead(chtLastSectionV1)
-		chtRoot := light.GetChtV2Root(pm.chainDb, chtLastSection, chtSectionHead)
+		chtRoot := light.GetChtRoot(pm.chainDb, chtLastSectionV1, chtSectionHead)
 		logger.Info("Loaded CHT", "section", chtLastSection, "head", chtSectionHead, "root", chtRoot)
 	}
 	bloomTrieSectionCount, _, _ := srv.bloomTrieIndexer.Sections()

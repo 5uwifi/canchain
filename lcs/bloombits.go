@@ -17,7 +17,7 @@ const (
 	bloomRetrievalWait = time.Microsecond * 100
 )
 
-func (eth *LightCANChain) startBloomHandlers() {
+func (eth *LightCANChain) startBloomHandlers(sectionSize uint64) {
 	for i := 0; i < bloomServiceThreads; i++ {
 		go func() {
 			for {
@@ -31,7 +31,7 @@ func (eth *LightCANChain) startBloomHandlers() {
 					compVectors, err := light.GetBloomBits(task.Context, eth.odr, task.Bit, task.Sections)
 					if err == nil {
 						for i := range task.Sections {
-							if blob, err := bitutil.DecompressBytes(compVectors[i], int(light.BloomTrieFrequency/8)); err == nil {
+							if blob, err := bitutil.DecompressBytes(compVectors[i], int(sectionSize/8)); err == nil {
 								task.Bitsets[i] = blob
 							} else {
 								task.Error = err

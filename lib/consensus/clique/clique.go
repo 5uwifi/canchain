@@ -450,15 +450,15 @@ func (c *Clique) Authorize(signer common.Address, signFn SignerFn) {
 	c.signFn = signFn
 }
 
-func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
+func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, results chan<- *types.Block, stop <-chan struct{}) error {
 	header := block.Header()
 
 	number := header.Number.Uint64()
 	if number == 0 {
-		return nil, errUnknownBlock
+		return errUnknownBlock
 	}
 	if c.config.Period == 0 && len(block.Transactions()) == 0 {
-		return nil, errWaitTransactions
+		return errWaitTransactions
 	}
 	c.lock.RLock()
 	signer, signFn := c.signer, c.signFn
@@ -466,17 +466,16 @@ func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, stop <-ch
 
 	snap, err := c.snapshot(chain, number-1, header.ParentHash, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if _, authorized := snap.Signers[signer]; !authorized {
-		return nil, errUnauthorized
+		return errUnauthorized
 	}
 	for seen, recent := range snap.Recents {
 		if recent == signer {
 			if limit := uint64(len(snap.Signers)/2 + 1); number < limit || seen > number-limit {
 				log4j.Info("Signed recently, must wait for others")
-				<-stop
-				return nil, nil
+				return nil
 			}
 		}
 	}
@@ -487,20 +486,27 @@ func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, stop <-ch
 
 		log4j.Trace("Out-of-turn signing requested", "wiggle", common.PrettyDuration(wiggle))
 	}
-	log4j.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
-
-	select {
-	case <-stop:
-		return nil, nil
-	case <-time.After(delay):
-	}
 	sighash, err := signFn(accounts.Account{Address: signer}, sigHash(header).Bytes())
 	if err != nil {
-		return nil, err
+		return err
 	}
 	copy(header.Extra[len(header.Extra)-extraSeal:], sighash)
+	log4j.Trace("Waiting for slot to sign and propagate", "delay", common.PrettyDuration(delay))
+	go func() {
+		select {
+		case <-stop:
+			return
+		case <-time.After(delay):
+		}
 
-	return block.WithSeal(header), nil
+		select {
+		case results <- block.WithSeal(header):
+		default:
+			log4j.Warn("Sealing result is not read by miner", "sealhash", c.SealHash(header))
+		}
+	}()
+
+	return nil
 }
 
 func (c *Clique) CalcDifficulty(chain consensus.ChainReader, time uint64, parent *types.Header) *big.Int {

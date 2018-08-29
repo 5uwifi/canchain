@@ -22,6 +22,7 @@ type OdrBackend interface {
 	BloomTrieIndexer() *kernel.ChainIndexer
 	BloomIndexer() *kernel.ChainIndexer
 	Retrieve(ctx context.Context, req OdrRequest) error
+	IndexerConfig() *IndexerConfig
 }
 
 type OdrRequest interface {
@@ -98,6 +99,7 @@ func (req *ReceiptsRequest) StoreResult(db candb.Database) {
 
 type ChtRequest struct {
 	OdrRequest
+	Config           *IndexerConfig
 	ChtNum, BlockNum uint64
 	ChtRoot          common.Hash
 	Header           *types.Header
@@ -115,6 +117,7 @@ func (req *ChtRequest) StoreResult(db candb.Database) {
 
 type BloomRequest struct {
 	OdrRequest
+	Config         *IndexerConfig
 	BloomTrieNum   uint64
 	BitIdx         uint
 	SectionIdxList []uint64
@@ -125,7 +128,7 @@ type BloomRequest struct {
 
 func (req *BloomRequest) StoreResult(db candb.Database) {
 	for i, sectionIdx := range req.SectionIdxList {
-		sectionHead := rawdb.ReadCanonicalHash(db, (sectionIdx+1)*BloomTrieFrequency-1)
+		sectionHead := rawdb.ReadCanonicalHash(db, (sectionIdx+1)*req.Config.BloomTrieSize-1)
 		rawdb.WriteBloomBits(db, req.BitIdx, sectionIdx, sectionHead, req.BloomBits[i])
 	}
 }

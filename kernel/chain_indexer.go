@@ -49,6 +49,9 @@ type ChainIndexer struct {
 	knownSections  uint64
 	cascadedHead   uint64
 
+	checkpointSections uint64
+	checkpointHead     common.Hash
+
 	throttling time.Duration
 
 	log  log4j.Logger
@@ -75,9 +78,12 @@ func NewChainIndexer(chainDb, indexDb candb.Database, backend ChainIndexerBacken
 	return c
 }
 
-func (c *ChainIndexer) AddKnownSectionHead(section uint64, shead common.Hash) {
+func (c *ChainIndexer) AddCheckpoint(section uint64, shead common.Hash) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
+
+	c.checkpointSections = section + 1
+	c.checkpointHead = shead
 
 	if section < c.storedSections {
 		return
@@ -168,14 +174,21 @@ func (c *ChainIndexer) newHead(head uint64, reorg bool) {
 	defer c.lock.Unlock()
 
 	if reorg {
-		changed := head / c.sectionSize
-		if changed < c.knownSections {
-			c.knownSections = changed
+		known := head / c.sectionSize
+		stored := known
+		if known < c.checkpointSections {
+			known = 0
 		}
-		if changed < c.storedSections {
-			c.setValidSections(changed)
+		if stored < c.checkpointSections {
+			stored = c.checkpointSections
 		}
-		head = changed * c.sectionSize
+		if known < c.knownSections {
+			c.knownSections = known
+		}
+		if stored < c.storedSections {
+			c.setValidSections(stored)
+		}
+		head = known * c.sectionSize
 
 		if head < c.cascadedHead {
 			c.cascadedHead = head
@@ -188,7 +201,17 @@ func (c *ChainIndexer) newHead(head uint64, reorg bool) {
 	var sections uint64
 	if head >= c.confirmsReq {
 		sections = (head + 1 - c.confirmsReq) / c.sectionSize
+		if sections < c.checkpointSections {
+			sections = 0
+		}
 		if sections > c.knownSections {
+			if c.knownSections < c.checkpointSections {
+				syncedHead := rawdb.ReadCanonicalHash(c.chainDb, c.checkpointSections*c.sectionSize-1)
+				if syncedHead != c.checkpointHead {
+					c.log.Error("Synced chain does not match checkpoint", "number", c.checkpointSections*c.sectionSize-1, "expected", c.checkpointHead, "synced", syncedHead)
+					return
+				}
+			}
 			c.knownSections = sections
 
 			select {
@@ -246,7 +269,6 @@ func (c *ChainIndexer) updateLoop() {
 						updating = false
 						c.log.Info("Finished upgrading chain index")
 					}
-
 					c.cascadedHead = c.storedSections*c.sectionSize - 1
 					for _, child := range c.children {
 						c.log.Trace("Cascading chain index update", "head", c.cascadedHead)
@@ -313,8 +335,12 @@ func (c *ChainIndexer) AddChildIndexer(indexer *ChainIndexer) {
 
 	c.children = append(c.children, indexer)
 
-	if c.storedSections > 0 {
-		indexer.newHead(c.storedSections*c.sectionSize-1, false)
+	sections := c.storedSections
+	if c.knownSections < sections {
+		sections = c.knownSections
+	}
+	if sections > 0 {
+		indexer.newHead(sections*c.sectionSize-1, false)
 	}
 }
 

@@ -29,6 +29,7 @@ var (
 
 type LightChain struct {
 	hc            *kernel.HeaderChain
+	indexerConfig *IndexerConfig
 	chainDb       candb.Database
 	odr           OdrBackend
 	chainFeed     event.Feed
@@ -58,13 +59,14 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 	blockCache, _ := lru.New(blockCacheLimit)
 
 	bc := &LightChain{
-		chainDb:      odr.Database(),
-		odr:          odr,
-		quit:         make(chan struct{}),
-		bodyCache:    bodyCache,
-		bodyRLPCache: bodyRLPCache,
-		blockCache:   blockCache,
-		engine:       engine,
+		chainDb:       odr.Database(),
+		indexerConfig: odr.IndexerConfig(),
+		odr:           odr,
+		quit:          make(chan struct{}),
+		bodyCache:     bodyCache,
+		bodyRLPCache:  bodyRLPCache,
+		blockCache:    blockCache,
+		engine:        engine,
 	}
 	var err error
 	bc.hc, err = kernel.NewHeaderChain(odr.Database(), config, bc.engine, bc.getProcInterrupt)
@@ -94,16 +96,16 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 func (self *LightChain) addTrustedCheckpoint(cp TrustedCheckpoint) {
 	if self.odr.ChtIndexer() != nil {
 		StoreChtRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.CHTRoot)
-		self.odr.ChtIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
+		self.odr.ChtIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
 	}
 	if self.odr.BloomTrieIndexer() != nil {
 		StoreBloomTrieRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.BloomRoot)
-		self.odr.BloomTrieIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
+		self.odr.BloomTrieIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
 	}
 	if self.odr.BloomIndexer() != nil {
-		self.odr.BloomIndexer().AddKnownSectionHead(cp.SectionIdx, cp.SectionHead)
+		self.odr.BloomIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
 	}
-	log4j.Info("Added trusted checkpoint", "chain", cp.name, "block", (cp.SectionIdx+1)*CHTFrequencyClient-1, "hash", cp.SectionHead)
+	log4j.Info("Added trusted checkpoint", "chain", cp.name, "block", (cp.SectionIdx+1)*self.indexerConfig.ChtSize-1, "hash", cp.SectionHead)
 }
 
 func (self *LightChain) getProcInterrupt() bool {
@@ -367,7 +369,7 @@ func (self *LightChain) SyncCht(ctx context.Context) bool {
 	head := self.CurrentHeader().Number.Uint64()
 	sections, _, _ := self.odr.ChtIndexer().Sections()
 
-	latest := sections*CHTFrequencyClient - 1
+	latest := sections*self.indexerConfig.ChtSize - 1
 	if clique := self.hc.Config().Clique; clique != nil {
 		latest -= latest % clique.Epoch
 	}

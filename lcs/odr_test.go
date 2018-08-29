@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/5uwifi/canchain/can"
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
@@ -144,34 +143,18 @@ func odrContractCall(ctx context.Context, db candb.Database, config *params.Chai
 }
 
 func testOdr(t *testing.T, protocol int, expFail uint64, fn odrTestFn) {
-	peers := newPeerSet()
-	dist := newRequestDistributor(peers, make(chan struct{}))
-	rm := newRetrieveManager(peers, dist, nil)
-	db := candb.NewMemDatabase()
-	ldb := candb.NewMemDatabase()
-	odr := NewLesOdr(ldb, rm)
-	odr.SetIndexers(light.NewChtIndexer(db, true, nil), light.NewBloomTrieIndexer(db, true, nil), can.NewBloomIndexer(db, light.BloomTrieFrequency, light.HelperTrieConfirmations))
-	pm := newTestProtocolManagerMust(t, false, 4, testChainGen, nil, nil, db)
-	lpm := newTestProtocolManagerMust(t, true, 0, nil, peers, odr, ldb)
-	_, err1, lpeer, err2 := newTestPeerPair("peer", protocol, pm, lpm)
-	select {
-	case <-time.After(time.Millisecond * 100):
-	case err := <-err1:
-		t.Fatalf("peer 1 handshake error: %v", err)
-	case err := <-err2:
-		t.Fatalf("peer 1 handshake error: %v", err)
-	}
-
-	lpm.synchronise(lpeer)
+	server, client, tearDown := newClientServerEnv(t, 4, protocol, nil, true)
+	defer tearDown()
+	client.pm.synchronise(client.rPeer)
 
 	test := func(expFail uint64) {
-		for i := uint64(0); i <= pm.blockchain.CurrentHeader().Number.Uint64(); i++ {
-			bhash := rawdb.ReadCanonicalHash(db, i)
-			b1 := fn(light.NoOdr, db, pm.chainConfig, pm.blockchain.(*kernel.BlockChain), nil, bhash)
+		for i := uint64(0); i <= server.pm.blockchain.CurrentHeader().Number.Uint64(); i++ {
+			bhash := rawdb.ReadCanonicalHash(server.db, i)
+			b1 := fn(light.NoOdr, server.db, server.pm.chainConfig, server.pm.blockchain.(*kernel.BlockChain), nil, bhash)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 			defer cancel()
-			b2 := fn(ctx, ldb, lpm.chainConfig, nil, lpm.blockchain.(*light.LightChain), bhash)
+			b2 := fn(ctx, client.db, client.pm.chainConfig, nil, client.pm.blockchain.(*light.LightChain), bhash)
 
 			eq := bytes.Equal(b1, b2)
 			exp := i < expFail
@@ -183,17 +166,16 @@ func testOdr(t *testing.T, protocol int, expFail uint64, fn odrTestFn) {
 			}
 		}
 	}
-
-	peers.Unregister(lpeer.id)
+	client.peers.Unregister(client.rPeer.id)
 	time.Sleep(time.Millisecond * 10)
 	test(expFail)
-	peers.Register(lpeer)
+	client.peers.Register(client.rPeer)
 	time.Sleep(time.Millisecond * 10)
-	lpeer.lock.Lock()
-	lpeer.hasBlock = func(common.Hash, uint64) bool { return true }
-	lpeer.lock.Unlock()
+	client.peers.lock.Lock()
+	client.rPeer.hasBlock = func(common.Hash, uint64) bool { return true }
+	client.peers.lock.Unlock()
 	test(5)
-	peers.Unregister(lpeer.id)
+	client.peers.Unregister(client.rPeer.id)
 	time.Sleep(time.Millisecond * 10)
 	test(5)
 }

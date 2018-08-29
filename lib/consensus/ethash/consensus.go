@@ -21,10 +21,10 @@ import (
 )
 
 var (
-	FrontierBlockReward    *big.Int = big.NewInt(5e+18)
-	ByzantiumBlockReward   *big.Int = big.NewInt(3e+18)
-	maxUncles                       = 2
-	allowedFutureBlockTime          = 15 * time.Second
+	FrontierBlockReward    = big.NewInt(5e+18)
+	ByzantiumBlockReward   = big.NewInt(3e+18)
+	maxUncles              = 2
+	allowedFutureBlockTime = 15 * time.Second
 )
 
 var (

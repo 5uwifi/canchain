@@ -34,7 +34,7 @@ func newCanonical(n int) (candb.Database, *LightChain, error) {
 	db := candb.NewMemDatabase()
 	gspec := kernel.Genesis{Config: params.TestChainConfig}
 	genesis := gspec.MustCommit(db)
-	blockchain, _ := NewLightChain(&dummyOdr{db: db}, gspec.Config, ethash.NewFaker())
+	blockchain, _ := NewLightChain(&dummyOdr{db: db, indexerConfig: TestClientIndexerConfig}, gspec.Config, ethash.NewFaker())
 
 	if n == 0 {
 		return db, blockchain, nil
@@ -208,7 +208,8 @@ func makeHeaderChainWithDiff(genesis *types.Block, d []int, seed byte) []*types.
 
 type dummyOdr struct {
 	OdrBackend
-	db candb.Database
+	db            candb.Database
+	indexerConfig *IndexerConfig
 }
 
 func (odr *dummyOdr) Database() candb.Database {
@@ -217,6 +218,10 @@ func (odr *dummyOdr) Database() candb.Database {
 
 func (odr *dummyOdr) Retrieve(ctx context.Context, req OdrRequest) error {
 	return nil
+}
+
+func (odr *dummyOdr) IndexerConfig() *IndexerConfig {
+	return odr.indexerConfig
 }
 
 func TestReorgLongHeaders(t *testing.T) {

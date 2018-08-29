@@ -11,16 +11,18 @@ import (
 
 type LesOdr struct {
 	db                                         candb.Database
+	indexerConfig                              *light.IndexerConfig
 	chtIndexer, bloomTrieIndexer, bloomIndexer *kernel.ChainIndexer
 	retriever                                  *retrieveManager
 	stop                                       chan struct{}
 }
 
-func NewLesOdr(db candb.Database, retriever *retrieveManager) *LesOdr {
+func NewLesOdr(db candb.Database, config *light.IndexerConfig, retriever *retrieveManager) *LesOdr {
 	return &LesOdr{
-		db:        db,
-		retriever: retriever,
-		stop:      make(chan struct{}),
+		db:            db,
+		indexerConfig: config,
+		retriever:     retriever,
+		stop:          make(chan struct{}),
 	}
 }
 
@@ -48,6 +50,10 @@ func (odr *LesOdr) BloomTrieIndexer() *kernel.ChainIndexer {
 
 func (odr *LesOdr) BloomIndexer() *kernel.ChainIndexer {
 	return odr.bloomIndexer
+}
+
+func (odr *LesOdr) IndexerConfig() *light.IndexerConfig {
+	return odr.indexerConfig
 }
 
 const (

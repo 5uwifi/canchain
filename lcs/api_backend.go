@@ -176,7 +176,7 @@ func (b *LcsApiBackend) BloomStatus() (uint64, uint64) {
 		return 0, 0
 	}
 	sections, _, _ := b.eth.bloomIndexer.Sections()
-	return light.BloomTrieFrequency, sections
+	return params.BloomBitsBlocksClient, sections
 }
 
 func (b *LcsApiBackend) ServiceFilter(ctx context.Context, session *bloombits.MatcherSession) {

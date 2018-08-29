@@ -99,7 +99,7 @@ type worker struct {
 
 	newWorkCh          chan *newWorkReq
 	taskCh             chan *task
-	resultCh           chan *task
+	resultCh           chan *types.Block
 	startCh            chan struct{}
 	exitCh             chan struct{}
 	resubmitIntervalCh chan time.Duration
@@ -144,7 +144,7 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, eth Backend,
 		chainSideCh:        make(chan kernel.ChainSideEvent, chainSideChanSize),
 		newWorkCh:          make(chan *newWorkReq),
 		taskCh:             make(chan *task),
-		resultCh:           make(chan *task, resultQueueSize),
+		resultCh:           make(chan *types.Block, resultQueueSize),
 		exitCh:             make(chan struct{}),
 		startCh:            make(chan struct{}, 1),
 		resubmitIntervalCh: make(chan time.Duration),
@@ -215,13 +215,6 @@ func (w *worker) isRunning() bool {
 
 func (w *worker) close() {
 	close(w.exitCh)
-	for empty := false; !empty; {
-		select {
-		case <-w.resultCh:
-		default:
-			empty = true
-		}
-	}
 }
 
 func (w *worker) newWorkLoop(recommit time.Duration) {
@@ -390,35 +383,6 @@ func (w *worker) mainLoop() {
 	}
 }
 
-func (w *worker) seal(t *task, stop <-chan struct{}) {
-	if w.skipSealHook != nil && w.skipSealHook(t) {
-		return
-	}
-	w.pendingMu.Lock()
-	w.pendingTasks[w.engine.SealHash(t.block.Header())] = t
-	w.pendingMu.Unlock()
-
-	if block, err := w.engine.Seal(w.chain, t.block, stop); block != nil {
-		sealhash := w.engine.SealHash(block.Header())
-		w.pendingMu.RLock()
-		task, exist := w.pendingTasks[sealhash]
-		w.pendingMu.RUnlock()
-		if !exist {
-			log4j.Error("Block found but no relative pending task", "number", block.Number(), "sealhash", sealhash, "hash", block.Hash())
-			return
-		}
-		task.block = block
-		log4j.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", block.Hash(),
-			"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
-		select {
-		case w.resultCh <- task:
-		case <-w.exitCh:
-		}
-	} else if err != nil {
-		log4j.Warn("Block sealing failed", "err", err)
-	}
-}
-
 func (w *worker) taskLoop() {
 	var (
 		stopCh chan struct{}
@@ -442,9 +406,18 @@ func (w *worker) taskLoop() {
 				continue
 			}
 			interrupt()
-			stopCh = make(chan struct{})
-			prev = sealHash
-			go w.seal(task, stopCh)
+			stopCh, prev = make(chan struct{}), sealHash
+
+			if w.skipSealHook != nil && w.skipSealHook(task) {
+				continue
+			}
+			w.pendingMu.Lock()
+			w.pendingTasks[w.engine.SealHash(task.block.Header())] = task
+			w.pendingMu.Unlock()
+
+			if err := w.engine.Seal(w.chain, task.block, w.resultCh, stopCh); err != nil {
+				log4j.Warn("Block sealing failed", "err", err)
+			}
 		case <-w.exitCh:
 			interrupt()
 			return
@@ -455,32 +428,47 @@ func (w *worker) taskLoop() {
 func (w *worker) resultLoop() {
 	for {
 		select {
-		case result := <-w.resultCh:
-			if result == nil {
+		case block := <-w.resultCh:
+			if block == nil {
 				continue
 			}
-			block := result.block
 			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
 				continue
 			}
-			for _, r := range result.receipts {
-				for _, l := range r.Logs {
-					l.BlockHash = block.Hash()
+			var (
+				sealhash = w.engine.SealHash(block.Header())
+				hash     = block.Hash()
+			)
+			w.pendingMu.RLock()
+			task, exist := w.pendingTasks[sealhash]
+			w.pendingMu.RUnlock()
+			if !exist {
+				log4j.Error("Block found but no relative pending task", "number", block.Number(), "sealhash", sealhash, "hash", hash)
+				continue
+			}
+			var (
+				receipts = make([]*types.Receipt, len(task.receipts))
+				logs     []*types.Log
+			)
+			for i, receipt := range task.receipts {
+				receipts[i] = new(types.Receipt)
+				*receipts[i] = *receipt
+				for _, log := range receipt.Logs {
+					log.BlockHash = hash
 				}
+				logs = append(logs, receipt.Logs...)
 			}
-			for _, log := range result.state.Logs() {
-				log.BlockHash = block.Hash()
-			}
-			stat, err := w.chain.WriteBlockWithState(block, result.receipts, result.state)
+			stat, err := w.chain.WriteBlockWithState(block, receipts, task.state)
 			if err != nil {
 				log4j.Error("Failed writing block to chain", "err", err)
 				continue
 			}
+			log4j.Info("Successfully sealed new block", "number", block.Number(), "sealhash", sealhash, "hash", hash,
+				"elapsed", common.PrettyDuration(time.Since(task.createdAt)))
+
 			w.mux.Post(kernel.NewMinedBlockEvent{Block: block})
-			var (
-				events []interface{}
-				logs   = result.state.Logs()
-			)
+
+			var events []interface{}
 			switch stat {
 			case kernel.CanonStatTy:
 				events = append(events, kernel.ChainEvent{Block: block, Hash: block.Hash(), Logs: logs})

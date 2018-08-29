@@ -16,6 +16,7 @@ import (
 
 type lesCommons struct {
 	config                       *can.Config
+	iConfig                      *light.IndexerConfig
 	chainDb                      candb.Database
 	protocolManager              *ProtocolManager
 	chtIndexer, bloomTrieIndexer *kernel.ChainIndexer
@@ -59,7 +60,7 @@ func (c *lesCommons) nodeInfo() interface{} {
 	sections2, _, _ := c.bloomTrieIndexer.Sections()
 
 	if !c.protocolManager.lightSync {
-		sections /= light.CHTFrequencyClient / light.CHTFrequencyServer
+		sections /= c.iConfig.PairChtSize / c.iConfig.ChtSize
 	}
 
 	if sections2 < sections {
@@ -72,7 +73,8 @@ func (c *lesCommons) nodeInfo() interface{} {
 		if c.protocolManager.lightSync {
 			chtRoot = light.GetChtRoot(c.chainDb, sectionIndex, sectionHead)
 		} else {
-			chtRoot = light.GetChtV2Root(c.chainDb, sectionIndex, sectionHead)
+			idxV2 := (sectionIndex+1)*c.iConfig.PairChtSize/c.iConfig.ChtSize - 1
+			chtRoot = light.GetChtRoot(c.chainDb, idxV2, sectionHead)
 		}
 		cht = light.TrustedCheckpoint{
 			SectionIdx:  sectionIndex,

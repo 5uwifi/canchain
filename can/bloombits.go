@@ -11,7 +11,6 @@ import (
 	"github.com/5uwifi/canchain/kernel/bloombits"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/types"
-	"github.com/5uwifi/canchain/params"
 )
 
 const (
@@ -24,7 +23,7 @@ const (
 	bloomRetrievalWait = time.Duration(0)
 )
 
-func (eth *CANChain) startBloomHandlers() {
+func (eth *CANChain) startBloomHandlers(sectionSize uint64) {
 	for i := 0; i < bloomServiceThreads; i++ {
 		go func() {
 			for {
@@ -36,9 +35,9 @@ func (eth *CANChain) startBloomHandlers() {
 					task := <-request
 					task.Bitsets = make([][]byte, len(task.Sections))
 					for i, section := range task.Sections {
-						head := rawdb.ReadCanonicalHash(eth.chainDb, (section+1)*params.BloomBitsBlocks-1)
+						head := rawdb.ReadCanonicalHash(eth.chainDb, (section+1)*sectionSize-1)
 						if compVector, err := rawdb.ReadBloomBits(eth.chainDb, task.Bit, section, head); err == nil {
-							if blob, err := bitutil.DecompressBytes(compVector, int(params.BloomBitsBlocks)/8); err == nil {
+							if blob, err := bitutil.DecompressBytes(compVector, int(sectionSize/8)); err == nil {
 								task.Bitsets[i] = blob
 							} else {
 								task.Error = err
@@ -55,8 +54,6 @@ func (eth *CANChain) startBloomHandlers() {
 }
 
 const (
-	bloomConfirms = 256
-
 	bloomThrottling = 100 * time.Millisecond
 )
 
@@ -68,14 +65,14 @@ type BloomIndexer struct {
 	head    common.Hash
 }
 
-func NewBloomIndexer(db candb.Database, size, confReq uint64) *kernel.ChainIndexer {
+func NewBloomIndexer(db candb.Database, size, confirms uint64) *kernel.ChainIndexer {
 	backend := &BloomIndexer{
 		db:   db,
 		size: size,
 	}
 	table := candb.NewTable(db, string(rawdb.BloomBitsIndexPrefix))
 
-	return kernel.NewChainIndexer(db, table, backend, size, confReq, bloomThrottling, "bloombits")
+	return kernel.NewChainIndexer(db, table, backend, size, confirms, bloomThrottling, "bloombits")
 }
 
 func (b *BloomIndexer) Reset(ctx context.Context, section uint64, lastSectionHead common.Hash) error {

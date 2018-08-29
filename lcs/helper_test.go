@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/5uwifi/canchain/can"
 	"github.com/5uwifi/canchain/candb"
@@ -97,6 +98,14 @@ func testChainGen(i int, block *kernel.BlockGen) {
 	}
 }
 
+func testIndexers(db candb.Database, odr light.OdrBackend, iConfig *light.IndexerConfig) (*kernel.ChainIndexer, *kernel.ChainIndexer, *kernel.ChainIndexer) {
+	chtIndexer := light.NewChtIndexer(db, odr, iConfig.ChtSize, iConfig.ChtConfirms)
+	bloomIndexer := can.NewBloomIndexer(db, iConfig.BloomSize, iConfig.BloomConfirms)
+	bloomTrieIndexer := light.NewBloomTrieIndexer(db, odr, iConfig.BloomSize, iConfig.BloomTrieSize)
+	bloomIndexer.AddChildIndexer(bloomTrieIndexer)
+	return chtIndexer, bloomIndexer, bloomTrieIndexer
+}
+
 func testRCL() RequestCostList {
 	cl := make(RequestCostList, len(reqList))
 	for i, code := range reqList {
@@ -107,7 +116,7 @@ func testRCL() RequestCostList {
 	return cl
 }
 
-func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *kernel.BlockGen), peers *peerSet, odr *LesOdr, db candb.Database) (*ProtocolManager, error) {
+func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *kernel.BlockGen), odr *LesOdr, peers *peerSet, db candb.Database) (*ProtocolManager, error) {
 	var (
 		evmux  = new(event.TypeMux)
 		engine = ethash.NewFaker()
@@ -126,16 +135,6 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 		chain, _ = light.NewLightChain(odr, gspec.Config, engine)
 	} else {
 		blockchain, _ := kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{})
-
-		chtIndexer := light.NewChtIndexer(db, false, nil)
-		chtIndexer.Start(blockchain)
-
-		bbtIndexer := light.NewBloomTrieIndexer(db, false, nil)
-
-		bloomIndexer := can.NewBloomIndexer(db, params.BloomBitsBlocks, light.HelperTrieProcessConfirmations)
-		bloomIndexer.AddChildIndexer(bbtIndexer)
-		bloomIndexer.Start(blockchain)
-
 		gchain, _ := kernel.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, blocks, generator)
 		if _, err := blockchain.InsertChain(gchain); err != nil {
 			panic(err)
@@ -143,7 +142,11 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 		chain = blockchain
 	}
 
-	pm, err := NewProtocolManager(gspec.Config, lightSync, NetworkId, evmux, engine, peers, chain, nil, db, odr, nil, nil, make(chan struct{}), new(sync.WaitGroup))
+	indexConfig := light.TestServerIndexerConfig
+	if lightSync {
+		indexConfig = light.TestClientIndexerConfig
+	}
+	pm, err := NewProtocolManager(gspec.Config, indexConfig, lightSync, NetworkId, evmux, engine, peers, chain, nil, db, odr, nil, nil, make(chan struct{}), new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +166,8 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 	return pm, nil
 }
 
-func newTestProtocolManagerMust(t *testing.T, lightSync bool, blocks int, generator func(int, *kernel.BlockGen), peers *peerSet, odr *LesOdr, db candb.Database) *ProtocolManager {
-	pm, err := newTestProtocolManager(lightSync, blocks, generator, peers, odr, db)
+func newTestProtocolManagerMust(t *testing.T, lightSync bool, blocks int, generator func(int, *kernel.BlockGen), odr *LesOdr, peers *peerSet, db candb.Database) *ProtocolManager {
+	pm, err := newTestProtocolManager(lightSync, blocks, generator, odr, peers, db)
 	if err != nil {
 		t.Fatalf("Failed to create protocol manager: %v", err)
 	}
@@ -273,4 +276,114 @@ func (p *testPeer) handshake(t *testing.T, td *big.Int, head common.Hash, headNu
 
 func (p *testPeer) close() {
 	p.app.Close()
+}
+
+type TestEntity struct {
+	db               candb.Database
+	rPeer            *peer
+	tPeer            *testPeer
+	peers            *peerSet
+	pm               *ProtocolManager
+	chtIndexer       *kernel.ChainIndexer
+	bloomIndexer     *kernel.ChainIndexer
+	bloomTrieIndexer *kernel.ChainIndexer
+}
+
+func newServerEnv(t *testing.T, blocks int, protocol int, waitIndexers func(*kernel.ChainIndexer, *kernel.ChainIndexer, *kernel.ChainIndexer)) (*TestEntity, func()) {
+	db := candb.NewMemDatabase()
+	cIndexer, bIndexer, btIndexer := testIndexers(db, nil, light.TestServerIndexerConfig)
+
+	pm := newTestProtocolManagerMust(t, false, blocks, testChainGen, nil, nil, db)
+	peer, _ := newTestPeer(t, "peer", protocol, pm, true)
+
+	cIndexer.Start(pm.blockchain.(*kernel.BlockChain))
+	bIndexer.Start(pm.blockchain.(*kernel.BlockChain))
+
+	if waitIndexers != nil {
+		waitIndexers(cIndexer, bIndexer, btIndexer)
+	}
+
+	return &TestEntity{
+			db:               db,
+			tPeer:            peer,
+			pm:               pm,
+			chtIndexer:       cIndexer,
+			bloomIndexer:     bIndexer,
+			bloomTrieIndexer: btIndexer,
+		}, func() {
+			peer.close()
+			cIndexer.Close()
+			bIndexer.Close()
+		}
+}
+
+func newClientServerEnv(t *testing.T, blocks int, protocol int, waitIndexers func(*kernel.ChainIndexer, *kernel.ChainIndexer, *kernel.ChainIndexer), newPeer bool) (*TestEntity, *TestEntity, func()) {
+	db, ldb := candb.NewMemDatabase(), candb.NewMemDatabase()
+	peers, lPeers := newPeerSet(), newPeerSet()
+
+	dist := newRequestDistributor(lPeers, make(chan struct{}))
+	rm := newRetrieveManager(lPeers, dist, nil)
+	odr := NewLesOdr(ldb, light.TestClientIndexerConfig, rm)
+
+	cIndexer, bIndexer, btIndexer := testIndexers(db, nil, light.TestServerIndexerConfig)
+	lcIndexer, lbIndexer, lbtIndexer := testIndexers(ldb, odr, light.TestClientIndexerConfig)
+	odr.SetIndexers(lcIndexer, lbtIndexer, lbIndexer)
+
+	pm := newTestProtocolManagerMust(t, false, blocks, testChainGen, nil, peers, db)
+	lpm := newTestProtocolManagerMust(t, true, 0, nil, odr, lPeers, ldb)
+
+	startIndexers := func(clientMode bool, pm *ProtocolManager) {
+		if clientMode {
+			lcIndexer.Start(pm.blockchain.(*light.LightChain))
+			lbIndexer.Start(pm.blockchain.(*light.LightChain))
+		} else {
+			cIndexer.Start(pm.blockchain.(*kernel.BlockChain))
+			bIndexer.Start(pm.blockchain.(*kernel.BlockChain))
+		}
+	}
+
+	startIndexers(false, pm)
+	startIndexers(true, lpm)
+
+	if waitIndexers != nil {
+		waitIndexers(cIndexer, bIndexer, btIndexer)
+	}
+
+	var (
+		peer, lPeer *peer
+		err1, err2  <-chan error
+	)
+	if newPeer {
+		peer, err1, lPeer, err2 = newTestPeerPair("peer", protocol, pm, lpm)
+		select {
+		case <-time.After(time.Millisecond * 100):
+		case err := <-err1:
+			t.Fatalf("peer 1 handshake error: %v", err)
+		case err := <-err2:
+			t.Fatalf("peer 2 handshake error: %v", err)
+		}
+	}
+
+	return &TestEntity{
+			db:               db,
+			pm:               pm,
+			rPeer:            peer,
+			peers:            peers,
+			chtIndexer:       cIndexer,
+			bloomIndexer:     bIndexer,
+			bloomTrieIndexer: btIndexer,
+		}, &TestEntity{
+			db:               ldb,
+			pm:               lpm,
+			rPeer:            lPeer,
+			peers:            lPeers,
+			chtIndexer:       lcIndexer,
+			bloomIndexer:     lbIndexer,
+			bloomTrieIndexer: lbtIndexer,
+		}, func() {
+			cIndexer.Close()
+			bIndexer.Close()
+			lcIndexer.Close()
+			lbIndexer.Close()
+		}
 }

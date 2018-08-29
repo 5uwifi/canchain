@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/5uwifi/canchain/can"
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/rawdb"
@@ -67,35 +66,17 @@ func tfCodeAccess(db candb.Database, bhash common.Hash, num uint64) light.OdrReq
 }
 
 func testAccess(t *testing.T, protocol int, fn accessTestFn) {
-	peers := newPeerSet()
-	dist := newRequestDistributor(peers, make(chan struct{}))
-	rm := newRetrieveManager(peers, dist, nil)
-	db := candb.NewMemDatabase()
-	ldb := candb.NewMemDatabase()
-	odr := NewLesOdr(ldb, rm)
-	odr.SetIndexers(light.NewChtIndexer(db, true, nil), light.NewBloomTrieIndexer(db, true, nil), can.NewBloomIndexer(db, light.BloomTrieFrequency, light.HelperTrieConfirmations))
-
-	pm := newTestProtocolManagerMust(t, false, 4, testChainGen, nil, nil, db)
-	lpm := newTestProtocolManagerMust(t, true, 0, nil, peers, odr, ldb)
-	_, err1, lpeer, err2 := newTestPeerPair("peer", protocol, pm, lpm)
-	select {
-	case <-time.After(time.Millisecond * 100):
-	case err := <-err1:
-		t.Fatalf("peer 1 handshake error: %v", err)
-	case err := <-err2:
-		t.Fatalf("peer 1 handshake error: %v", err)
-	}
-
-	lpm.synchronise(lpeer)
+	server, client, tearDown := newClientServerEnv(t, 4, protocol, nil, true)
+	defer tearDown()
+	client.pm.synchronise(client.rPeer)
 
 	test := func(expFail uint64) {
-		for i := uint64(0); i <= pm.blockchain.CurrentHeader().Number.Uint64(); i++ {
-			bhash := rawdb.ReadCanonicalHash(db, i)
-			if req := fn(ldb, bhash, i); req != nil {
+		for i := uint64(0); i <= server.pm.blockchain.CurrentHeader().Number.Uint64(); i++ {
+			bhash := rawdb.ReadCanonicalHash(server.db, i)
+			if req := fn(client.db, bhash, i); req != nil {
 				ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 				defer cancel()
-
-				err := odr.Retrieve(ctx, req)
+				err := client.pm.odr.Retrieve(ctx, req)
 				got := err == nil
 				exp := i < expFail
 				if exp && !got {
@@ -108,14 +89,14 @@ func testAccess(t *testing.T, protocol int, fn accessTestFn) {
 		}
 	}
 
-	peers.Unregister(lpeer.id)
+	client.peers.Unregister(client.rPeer.id)
 	time.Sleep(time.Millisecond * 10)
 	test(0)
 
-	peers.Register(lpeer)
+	client.peers.Register(client.rPeer)
 	time.Sleep(time.Millisecond * 10)
-	lpeer.lock.Lock()
-	lpeer.hasBlock = func(common.Hash, uint64) bool { return true }
-	lpeer.lock.Unlock()
+	client.rPeer.lock.Lock()
+	client.rPeer.hasBlock = func(common.Hash, uint64) bool { return true }
+	client.rPeer.lock.Unlock()
 	test(5)
 }

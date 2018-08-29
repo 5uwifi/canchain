@@ -31,7 +31,7 @@ var ErrInvalidDumpMagic = errors.New("invalid dump magic")
 var (
 	two256 = new(big.Int).Exp(big.NewInt(2), big.NewInt(256), big.NewInt(0))
 
-	sharedEthash = New(Config{"", 3, 0, "", 1, 0, ModeNormal}, nil)
+	sharedEthash = New(Config{"", 3, 0, "", 1, 0, ModeNormal}, nil, false)
 
 	algorithmRevision = 23
 
@@ -330,6 +330,11 @@ type Config struct {
 	PowMode        Mode
 }
 
+type sealTask struct {
+	block   *types.Block
+	results chan<- *types.Block
+}
+
 type mineResult struct {
 	nonce     types.BlockNonce
 	mixDigest common.Hash
@@ -362,8 +367,7 @@ type Ethash struct {
 	update   chan struct{}
 	hashrate metrics.Meter
 
-	workCh       chan *types.Block
-	resultCh     chan *types.Block
+	workCh       chan *sealTask
 	fetchWorkCh  chan *sealWork
 	submitWorkCh chan *mineResult
 	fetchRateCh  chan chan uint64
@@ -378,7 +382,7 @@ type Ethash struct {
 	exitCh    chan chan error
 }
 
-func New(config Config, notify []string) *Ethash {
+func New(config Config, notify []string, noverify bool) *Ethash {
 	if config.CachesInMem <= 0 {
 		log4j.Warn("One ethash cache must always be in memory", "requested", config.CachesInMem)
 		config.CachesInMem = 1
@@ -395,34 +399,32 @@ func New(config Config, notify []string) *Ethash {
 		datasets:     newlru("dataset", config.DatasetsInMem, newDataset),
 		update:       make(chan struct{}),
 		hashrate:     metrics.NewMeter(),
-		workCh:       make(chan *types.Block),
-		resultCh:     make(chan *types.Block),
+		workCh:       make(chan *sealTask),
 		fetchWorkCh:  make(chan *sealWork),
 		submitWorkCh: make(chan *mineResult),
 		fetchRateCh:  make(chan chan uint64),
 		submitRateCh: make(chan *hashrate),
 		exitCh:       make(chan chan error),
 	}
-	go ethash.remote(notify)
+	go ethash.remote(notify, noverify)
 	return ethash
 }
 
-func NewTester(notify []string) *Ethash {
+func NewTester(notify []string, noverify bool) *Ethash {
 	ethash := &Ethash{
 		config:       Config{PowMode: ModeTest},
 		caches:       newlru("cache", 1, newCache),
 		datasets:     newlru("dataset", 1, newDataset),
 		update:       make(chan struct{}),
 		hashrate:     metrics.NewMeter(),
-		workCh:       make(chan *types.Block),
-		resultCh:     make(chan *types.Block),
+		workCh:       make(chan *sealTask),
 		fetchWorkCh:  make(chan *sealWork),
 		submitWorkCh: make(chan *mineResult),
 		fetchRateCh:  make(chan chan uint64),
 		submitRateCh: make(chan *hashrate),
 		exitCh:       make(chan chan error),
 	}
-	go ethash.remote(notify)
+	go ethash.remote(notify, noverify)
 	return ethash
 }
 
