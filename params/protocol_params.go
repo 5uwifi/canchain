@@ -2,10 +2,6 @@ package params
 
 import "math/big"
 
-var (
-	TargetGasLimit = GenesisGasLimit
-)
-
 const (
 	GasLimitBoundDivisor uint64 = 1024
 	MinGasLimit          uint64 = 5000

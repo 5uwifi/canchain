@@ -66,7 +66,7 @@ func (v *BlockValidator) ValidateState(block, parent *types.Block, statedb *stat
 	return nil
 }
 
-func CalcGasLimit(parent *types.Block) uint64 {
+func CalcGasLimit(parent *types.Block, gasFloor, gasCeil uint64) uint64 {
 	contrib := (parent.GasUsed() + parent.GasUsed()/2) / params.GasLimitBoundDivisor
 
 	decay := parent.GasLimit()/params.GasLimitBoundDivisor - 1
@@ -82,10 +82,15 @@ func CalcGasLimit(parent *types.Block) uint64 {
 	if limit < params.MinGasLimit {
 		limit = params.MinGasLimit
 	}
-	if limit < params.TargetGasLimit {
+	if limit < gasFloor {
 		limit = parent.GasLimit() + decay
-		if limit > params.TargetGasLimit {
-			limit = params.TargetGasLimit
+		if limit > gasFloor {
+			limit = gasFloor
+		}
+	} else if limit > gasCeil {
+		limit = parent.GasLimit() - decay
+		if limit < gasCeil {
+			limit = gasCeil
 		}
 	}
 	return limit

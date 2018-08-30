@@ -15,21 +15,21 @@ import (
 	"github.com/5uwifi/canchain/accounts/keystore"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/fdlimit"
-	"github.com/5uwifi/canchain/consensus/ethash"
-	"github.com/5uwifi/canchain/core"
-	"github.com/5uwifi/canchain/core/types"
-	"github.com/5uwifi/canchain/crypto"
-	"github.com/5uwifi/canchain/eth"
-	"github.com/5uwifi/canchain/eth/downloader"
-	"github.com/5uwifi/canchain/log"
+	"github.com/5uwifi/canchain/lib/consensus/ethash"
+	"github.com/5uwifi/canchain/kernel"
+	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/lib/crypto"
+	"github.com/5uwifi/canchain/can"
+	"github.com/5uwifi/canchain/can/downloader"
+	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/node"
-	"github.com/5uwifi/canchain/p2p"
-	"github.com/5uwifi/canchain/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p"
+	"github.com/5uwifi/canchain/lib/p2p/discover"
 	"github.com/5uwifi/canchain/params"
 )
 
 func main() {
-	log.Root().SetHandler(log.LvlFilterHandler(log.LvlInfo, log.StreamHandler(os.Stderr, log.TerminalFormat(true))))
+	log4j.Root().SetHandler(log4j.LvlFilterHandler(log4j.LvlInfo, log4j.StreamHandler(os.Stderr, log4j.TerminalFormat(true))))
 	fdlimit.Raise(2048)
 
 	faucets := make([]*ecdsa.PrivateKey, 128)
@@ -74,11 +74,11 @@ func main() {
 	time.Sleep(3 * time.Second)
 
 	for _, node := range nodes {
-		var ethereum *eth.CANChain
-		if err := node.Service(&ethereum); err != nil {
+		var canchain *can.CANChain
+		if err := node.Service(&canchain); err != nil {
 			panic(err)
 		}
-		if err := ethereum.StartMining(1); err != nil {
+		if err := canchain.StartMining(1); err != nil {
 			panic(err)
 		}
 	}
@@ -88,43 +88,43 @@ func main() {
 	for {
 		index := rand.Intn(len(faucets))
 
-		var ethereum *eth.CANChain
-		if err := nodes[index%len(nodes)].Service(&ethereum); err != nil {
+		var canchain *can.CANChain
+		if err := nodes[index%len(nodes)].Service(&canchain); err != nil {
 			panic(err)
 		}
 		tx, err := types.SignTx(types.NewTransaction(nonces[index], crypto.PubkeyToAddress(faucets[index].PublicKey), new(big.Int), 21000, big.NewInt(100000000000+rand.Int63n(65536)), nil), types.HomesteadSigner{}, faucets[index])
 		if err != nil {
 			panic(err)
 		}
-		if err := ethereum.TxPool().AddLocal(tx); err != nil {
+		if err := canchain.TxPool().AddLocal(tx); err != nil {
 			panic(err)
 		}
 		nonces[index]++
 
-		if pend, _ := ethereum.TxPool().Stats(); pend > 2048 {
+		if pend, _ := canchain.TxPool().Stats(); pend > 2048 {
 			time.Sleep(100 * time.Millisecond)
 		}
 	}
 }
 
-func makeGenesis(faucets []*ecdsa.PrivateKey) *core.Genesis {
-	genesis := core.DefaultTestnetGenesisBlock()
+func makeGenesis(faucets []*ecdsa.PrivateKey) *kernel.Genesis {
+	genesis := kernel.DefaultIronmanGenesisBlock()
 	genesis.Difficulty = params.MinimumDifficulty
 	genesis.GasLimit = 25000000
 
 	genesis.Config.ChainID = big.NewInt(18)
 	genesis.Config.EIP150Hash = common.Hash{}
 
-	genesis.Alloc = core.GenesisAlloc{}
+	genesis.Alloc = kernel.GenesisAlloc{}
 	for _, faucet := range faucets {
-		genesis.Alloc[crypto.PubkeyToAddress(faucet.PublicKey)] = core.GenesisAccount{
+		genesis.Alloc[crypto.PubkeyToAddress(faucet.PublicKey)] = kernel.GenesisAccount{
 			Balance: new(big.Int).Exp(big.NewInt(2), big.NewInt(128), nil),
 		}
 	}
 	return genesis
 }
 
-func makeMiner(genesis *core.Genesis, nodes []string) (*node.Node, error) {
+func makeMiner(genesis *kernel.Genesis, nodes []string) (*node.Node, error) {
 	datadir, _ := ioutil.TempDir("", "")
 
 	config := &node.Config{
@@ -144,15 +144,17 @@ func makeMiner(genesis *core.Genesis, nodes []string) (*node.Node, error) {
 		return nil, err
 	}
 	if err := stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
-		return eth.New(ctx, &eth.Config{
+		return can.New(ctx, &can.Config{
 			Genesis:         genesis,
 			NetworkId:       genesis.Config.ChainID.Uint64(),
 			SyncMode:        downloader.FullSync,
 			DatabaseCache:   256,
 			DatabaseHandles: 256,
-			TxPool:          core.DefaultTxPoolConfig,
-			GPO:             eth.DefaultConfig.GPO,
-			Ethash:          eth.DefaultConfig.Ethash,
+			TxPool:          kernel.DefaultTxPoolConfig,
+			GPO:             can.DefaultConfig.GPO,
+			Ethash:          can.DefaultConfig.Ethash,
+			MinerGasFloor:   genesis.GasLimit * 9 / 10,
+			MinerGasCeil:    genesis.GasLimit * 11 / 10,
 			MinerGasPrice:   big.NewInt(1),
 			MinerRecommit:   time.Second,
 		})

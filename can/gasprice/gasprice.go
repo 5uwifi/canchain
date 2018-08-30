@@ -13,7 +13,7 @@ import (
 	"github.com/5uwifi/canchain/rpc"
 )
 
-var maxPrice = big.NewInt(500 * params.Shannon)
+var maxPrice = big.NewInt(500 * params.GWei)
 
 type Config struct {
 	Blocks     int
