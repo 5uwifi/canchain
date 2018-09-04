@@ -23,32 +23,32 @@ import (
 )
 
 type LcsApiBackend struct {
-	eth *LightCANChain
+	can *LightCANChain
 	gpo *gasprice.Oracle
 }
 
 func (b *LcsApiBackend) ChainConfig() *params.ChainConfig {
-	return b.eth.chainConfig
+	return b.can.chainConfig
 }
 
 func (b *LcsApiBackend) CurrentBlock() *types.Block {
-	return types.NewBlockWithHeader(b.eth.BlockChain().CurrentHeader())
+	return types.NewBlockWithHeader(b.can.BlockChain().CurrentHeader())
 }
 
 func (b *LcsApiBackend) SetHead(number uint64) {
-	b.eth.protocolManager.downloader.Cancel()
-	b.eth.blockchain.SetHead(number)
+	b.can.protocolManager.downloader.Cancel()
+	b.can.blockchain.SetHead(number)
 }
 
 func (b *LcsApiBackend) HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*types.Header, error) {
 	if blockNr == rpc.LatestBlockNumber || blockNr == rpc.PendingBlockNumber {
-		return b.eth.blockchain.CurrentHeader(), nil
+		return b.can.blockchain.CurrentHeader(), nil
 	}
-	return b.eth.blockchain.GetHeaderByNumberOdr(ctx, uint64(blockNr))
+	return b.can.blockchain.GetHeaderByNumberOdr(ctx, uint64(blockNr))
 }
 
 func (b *LcsApiBackend) HeaderByHash(ctx context.Context, hash common.Hash) (*types.Header, error) {
-	return b.eth.blockchain.GetHeaderByHash(hash), nil
+	return b.can.blockchain.GetHeaderByHash(hash), nil
 }
 
 func (b *LcsApiBackend) BlockByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*types.Block, error) {
@@ -64,95 +64,95 @@ func (b *LcsApiBackend) StateAndHeaderByNumber(ctx context.Context, blockNr rpc.
 	if header == nil || err != nil {
 		return nil, nil, err
 	}
-	return light.NewState(ctx, header, b.eth.odr), header, nil
+	return light.NewState(ctx, header, b.can.odr), header, nil
 }
 
 func (b *LcsApiBackend) GetBlock(ctx context.Context, blockHash common.Hash) (*types.Block, error) {
-	return b.eth.blockchain.GetBlockByHash(ctx, blockHash)
+	return b.can.blockchain.GetBlockByHash(ctx, blockHash)
 }
 
 func (b *LcsApiBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
-	if number := rawdb.ReadHeaderNumber(b.eth.chainDb, hash); number != nil {
-		return light.GetBlockReceipts(ctx, b.eth.odr, hash, *number)
+	if number := rawdb.ReadHeaderNumber(b.can.chainDb, hash); number != nil {
+		return light.GetBlockReceipts(ctx, b.can.odr, hash, *number)
 	}
 	return nil, nil
 }
 
 func (b *LcsApiBackend) GetLogs(ctx context.Context, hash common.Hash) ([][]*types.Log, error) {
-	if number := rawdb.ReadHeaderNumber(b.eth.chainDb, hash); number != nil {
-		return light.GetBlockLogs(ctx, b.eth.odr, hash, *number)
+	if number := rawdb.ReadHeaderNumber(b.can.chainDb, hash); number != nil {
+		return light.GetBlockLogs(ctx, b.can.odr, hash, *number)
 	}
 	return nil, nil
 }
 
 func (b *LcsApiBackend) GetTd(hash common.Hash) *big.Int {
-	return b.eth.blockchain.GetTdByHash(hash)
+	return b.can.blockchain.GetTdByHash(hash)
 }
 
 func (b *LcsApiBackend) GetEVM(ctx context.Context, msg kernel.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error) {
 	state.SetBalance(msg.From(), math.MaxBig256)
-	context := kernel.NewEVMContext(msg, header, b.eth.blockchain, nil)
-	return vm.NewEVM(context, state, b.eth.chainConfig, vmCfg), state.Error, nil
+	context := kernel.NewEVMContext(msg, header, b.can.blockchain, nil)
+	return vm.NewEVM(context, state, b.can.chainConfig, vmCfg), state.Error, nil
 }
 
 func (b *LcsApiBackend) SendTx(ctx context.Context, signedTx *types.Transaction) error {
-	return b.eth.txPool.Add(ctx, signedTx)
+	return b.can.txPool.Add(ctx, signedTx)
 }
 
 func (b *LcsApiBackend) RemoveTx(txHash common.Hash) {
-	b.eth.txPool.RemoveTx(txHash)
+	b.can.txPool.RemoveTx(txHash)
 }
 
 func (b *LcsApiBackend) GetPoolTransactions() (types.Transactions, error) {
-	return b.eth.txPool.GetTransactions()
+	return b.can.txPool.GetTransactions()
 }
 
 func (b *LcsApiBackend) GetPoolTransaction(txHash common.Hash) *types.Transaction {
-	return b.eth.txPool.GetTransaction(txHash)
+	return b.can.txPool.GetTransaction(txHash)
 }
 
 func (b *LcsApiBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uint64, error) {
-	return b.eth.txPool.GetNonce(ctx, addr)
+	return b.can.txPool.GetNonce(ctx, addr)
 }
 
 func (b *LcsApiBackend) Stats() (pending int, queued int) {
-	return b.eth.txPool.Stats(), 0
+	return b.can.txPool.Stats(), 0
 }
 
 func (b *LcsApiBackend) TxPoolContent() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
-	return b.eth.txPool.Content()
+	return b.can.txPool.Content()
 }
 
 func (b *LcsApiBackend) SubscribeNewTxsEvent(ch chan<- kernel.NewTxsEvent) event.Subscription {
-	return b.eth.txPool.SubscribeNewTxsEvent(ch)
+	return b.can.txPool.SubscribeNewTxsEvent(ch)
 }
 
 func (b *LcsApiBackend) SubscribeChainEvent(ch chan<- kernel.ChainEvent) event.Subscription {
-	return b.eth.blockchain.SubscribeChainEvent(ch)
+	return b.can.blockchain.SubscribeChainEvent(ch)
 }
 
 func (b *LcsApiBackend) SubscribeChainHeadEvent(ch chan<- kernel.ChainHeadEvent) event.Subscription {
-	return b.eth.blockchain.SubscribeChainHeadEvent(ch)
+	return b.can.blockchain.SubscribeChainHeadEvent(ch)
 }
 
 func (b *LcsApiBackend) SubscribeChainSideEvent(ch chan<- kernel.ChainSideEvent) event.Subscription {
-	return b.eth.blockchain.SubscribeChainSideEvent(ch)
+	return b.can.blockchain.SubscribeChainSideEvent(ch)
 }
 
 func (b *LcsApiBackend) SubscribeLogsEvent(ch chan<- []*types.Log) event.Subscription {
-	return b.eth.blockchain.SubscribeLogsEvent(ch)
+	return b.can.blockchain.SubscribeLogsEvent(ch)
 }
 
 func (b *LcsApiBackend) SubscribeRemovedLogsEvent(ch chan<- kernel.RemovedLogsEvent) event.Subscription {
-	return b.eth.blockchain.SubscribeRemovedLogsEvent(ch)
+	return b.can.blockchain.SubscribeRemovedLogsEvent(ch)
 }
 
 func (b *LcsApiBackend) Downloader() *downloader.Downloader {
-	return b.eth.Downloader()
+	return b.can.Downloader()
 }
 
 func (b *LcsApiBackend) ProtocolVersion() int {
-	return b.eth.LcsVersion() + 10000
+	return b.can.LcsVersion() + 10000
 }
 
 func (b *LcsApiBackend) SuggestPrice(ctx context.Context) (*big.Int, error) {
@@ -160,27 +160,27 @@ func (b *LcsApiBackend) SuggestPrice(ctx context.Context) (*big.Int, error) {
 }
 
 func (b *LcsApiBackend) ChainDb() candb.Database {
-	return b.eth.chainDb
+	return b.can.chainDb
 }
 
 func (b *LcsApiBackend) EventMux() *event.TypeMux {
-	return b.eth.eventMux
+	return b.can.eventMux
 }
 
 func (b *LcsApiBackend) AccountManager() *accounts.Manager {
-	return b.eth.accountManager
+	return b.can.accountManager
 }
 
 func (b *LcsApiBackend) BloomStatus() (uint64, uint64) {
-	if b.eth.bloomIndexer == nil {
+	if b.can.bloomIndexer == nil {
 		return 0, 0
 	}
-	sections, _, _ := b.eth.bloomIndexer.Sections()
+	sections, _, _ := b.can.bloomIndexer.Sections()
 	return params.BloomBitsBlocksClient, sections
 }
 
 func (b *LcsApiBackend) ServiceFilter(ctx context.Context, session *bloombits.MatcherSession) {
 	for i := 0; i < bloomFilterThreads; i++ {
-		go session.Multiplex(bloomRetrievalBatch, bloomRetrievalWait, b.eth.bloomRequests)
+		go session.Multiplex(bloomRetrievalBatch, bloomRetrievalWait, b.can.bloomRequests)
 	}
 }

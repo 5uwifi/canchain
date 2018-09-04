@@ -44,8 +44,8 @@ type blockChain interface {
 
 type Service struct {
 	server *p2p.Server
-	eth    *can.CANChain
-	les    *lcs.LightCANChain
+	can    *can.CANChain
+	lcs    *lcs.LightCANChain
 	engine consensus.Engine
 
 	node string
@@ -56,21 +56,21 @@ type Service struct {
 	histCh chan []uint64
 }
 
-func New(url string, ethServ *can.CANChain, lesServ *lcs.LightCANChain) (*Service, error) {
+func New(url string, canServ *can.CANChain, lesServ *lcs.LightCANChain) (*Service, error) {
 	re := regexp.MustCompile("([^:@]*)(:([^@]*))?@(.+)")
 	parts := re.FindStringSubmatch(url)
 	if len(parts) != 5 {
 		return nil, fmt.Errorf("invalid netstats url: \"%s\", should be nodename:secret@host:port", url)
 	}
 	var engine consensus.Engine
-	if ethServ != nil {
-		engine = ethServ.Engine()
+	if canServ != nil {
+		engine = canServ.Engine()
 	} else {
 		engine = lesServ.Engine()
 	}
 	return &Service{
-		eth:    ethServ,
-		les:    lesServ,
+		can:    canServ,
+		lcs:    lesServ,
 		engine: engine,
 		node:   parts[1],
 		pass:   parts[3],
@@ -100,12 +100,12 @@ func (s *Service) Stop() error {
 func (s *Service) loop() {
 	var blockchain blockChain
 	var txpool txPool
-	if s.eth != nil {
-		blockchain = s.eth.BlockChain()
-		txpool = s.eth.TxPool()
+	if s.can != nil {
+		blockchain = s.can.BlockChain()
+		txpool = s.can.TxPool()
 	} else {
-		blockchain = s.les.BlockChain()
-		txpool = s.les.TxPool()
+		blockchain = s.lcs.BlockChain()
+		txpool = s.lcs.TxPool()
 	}
 
 	chainHeadCh := make(chan kernel.ChainHeadEvent, chainHeadChanSize)
@@ -439,12 +439,12 @@ func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
 		txs    []txStats
 		uncles []*types.Header
 	)
-	if s.eth != nil {
+	if s.can != nil {
 		if block == nil {
-			block = s.eth.BlockChain().CurrentBlock()
+			block = s.can.BlockChain().CurrentBlock()
 		}
 		header = block.Header()
-		td = s.eth.BlockChain().GetTd(header.Hash(), header.Number.Uint64())
+		td = s.can.BlockChain().GetTd(header.Hash(), header.Number.Uint64())
 
 		txs = make([]txStats, len(block.Transactions()))
 		for i, tx := range block.Transactions() {
@@ -455,9 +455,9 @@ func (s *Service) assembleBlockStats(block *types.Block) *blockStats {
 		if block != nil {
 			header = block.Header()
 		} else {
-			header = s.les.BlockChain().CurrentHeader()
+			header = s.lcs.BlockChain().CurrentHeader()
 		}
-		td = s.les.BlockChain().GetTd(header.Hash(), header.Number.Uint64())
+		td = s.lcs.BlockChain().GetTd(header.Hash(), header.Number.Uint64())
 		txs = []txStats{}
 	}
 	author, _ := s.engine.Author(header)
@@ -485,10 +485,10 @@ func (s *Service) reportHistory(conn *websocket.Conn, list []uint64) error {
 		indexes = append(indexes, list...)
 	} else {
 		var head int64
-		if s.eth != nil {
-			head = s.eth.BlockChain().CurrentHeader().Number.Int64()
+		if s.can != nil {
+			head = s.can.BlockChain().CurrentHeader().Number.Int64()
 		} else {
-			head = s.les.BlockChain().CurrentHeader().Number.Int64()
+			head = s.lcs.BlockChain().CurrentHeader().Number.Int64()
 		}
 		start := head - historyUpdateRange + 1
 		if start < 0 {
@@ -501,10 +501,10 @@ func (s *Service) reportHistory(conn *websocket.Conn, list []uint64) error {
 	history := make([]*blockStats, len(indexes))
 	for i, number := range indexes {
 		var block *types.Block
-		if s.eth != nil {
-			block = s.eth.BlockChain().GetBlockByNumber(number)
+		if s.can != nil {
+			block = s.can.BlockChain().GetBlockByNumber(number)
 		} else {
-			if header := s.les.BlockChain().GetHeaderByNumber(number); header != nil {
+			if header := s.lcs.BlockChain().GetHeaderByNumber(number); header != nil {
 				block = types.NewBlockWithHeader(header)
 			}
 		}
@@ -536,10 +536,10 @@ type pendStats struct {
 
 func (s *Service) reportPending(conn *websocket.Conn) error {
 	var pending int
-	if s.eth != nil {
-		pending, _ = s.eth.TxPool().Stats()
+	if s.can != nil {
+		pending, _ = s.can.TxPool().Stats()
 	} else {
-		pending = s.les.TxPool().Stats()
+		pending = s.lcs.TxPool().Stats()
 	}
 	log4j.Trace("Sending pending transactions to ethstats", "count", pending)
 
@@ -572,18 +572,18 @@ func (s *Service) reportStats(conn *websocket.Conn) error {
 		syncing  bool
 		gasprice int
 	)
-	if s.eth != nil {
-		mining = s.eth.Miner().Mining()
-		hashrate = int(s.eth.Miner().HashRate())
+	if s.can != nil {
+		mining = s.can.Miner().Mining()
+		hashrate = int(s.can.Miner().HashRate())
 
-		sync := s.eth.Downloader().Progress()
-		syncing = s.eth.BlockChain().CurrentHeader().Number.Uint64() >= sync.HighestBlock
+		sync := s.can.Downloader().Progress()
+		syncing = s.can.BlockChain().CurrentHeader().Number.Uint64() >= sync.HighestBlock
 
-		price, _ := s.eth.APIBackend.SuggestPrice(context.Background())
+		price, _ := s.can.APIBackend.SuggestPrice(context.Background())
 		gasprice = int(price.Uint64())
 	} else {
-		sync := s.les.Downloader().Progress()
-		syncing = s.les.BlockChain().CurrentHeader().Number.Uint64() >= sync.HighestBlock
+		sync := s.lcs.Downloader().Progress()
+		syncing = s.lcs.BlockChain().CurrentHeader().Number.Uint64() >= sync.HighestBlock
 	}
 	log4j.Trace("Sending node details to ethstats")
 

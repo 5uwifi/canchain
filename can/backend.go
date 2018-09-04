@@ -34,7 +34,7 @@ import (
 	"github.com/5uwifi/canchain/rpc"
 )
 
-type LesServer interface {
+type LcsServer interface {
 	Start(srvr *p2p.Server)
 	Stop()
 	Protocols() []p2p.Protocol
@@ -50,7 +50,7 @@ type CANChain struct {
 	txPool          *kernel.TxPool
 	blockchain      *kernel.BlockChain
 	protocolManager *ProtocolManager
-	lesServer       LesServer
+	lcsServer       LcsServer
 
 	chainDb candb.Database
 
@@ -61,7 +61,7 @@ type CANChain struct {
 	bloomRequests chan chan *bloombits.Retrieval
 	bloomIndexer  *kernel.ChainIndexer
 
-	APIBackend *EthAPIBackend
+	APIBackend *CanAPIBackend
 
 	miner     *miner.Miner
 	gasPrice  *big.Int
@@ -73,8 +73,8 @@ type CANChain struct {
 	lock sync.RWMutex
 }
 
-func (s *CANChain) AddLesServer(ls LesServer) {
-	s.lesServer = ls
+func (s *CANChain) AddLcsServer(ls LcsServer) {
+	s.lcsServer = ls
 	ls.SetBloomBitsIndexer(s.bloomIndexer)
 }
 
@@ -99,7 +99,7 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 	}
 	log4j.Info("Initialised chain configuration", "config", chainConfig)
 
-	eth := &CANChain{
+	can := &CANChain{
 		config:         config,
 		chainDb:        chainDb,
 		chainConfig:    chainConfig,
@@ -127,37 +127,37 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 		vmConfig    = vm.Config{EnablePreimageRecording: config.EnablePreimageRecording}
 		cacheConfig = &kernel.CacheConfig{Disabled: config.NoPruning, TrieNodeLimit: config.TrieCache, TrieTimeLimit: config.TrieTimeout}
 	)
-	eth.blockchain, err = kernel.NewBlockChain(chainDb, cacheConfig, eth.chainConfig, eth.engine, vmConfig)
+	can.blockchain, err = kernel.NewBlockChain(chainDb, cacheConfig, can.chainConfig, can.engine, vmConfig)
 	if err != nil {
 		return nil, err
 	}
 	if compat, ok := genesisErr.(*params.ConfigCompatError); ok {
 		log4j.Warn("Rewinding chain to upgrade configuration", "err", compat)
-		eth.blockchain.SetHead(compat.RewindTo)
+		can.blockchain.SetHead(compat.RewindTo)
 		rawdb.WriteChainConfig(chainDb, genesisHash, chainConfig)
 	}
-	eth.bloomIndexer.Start(eth.blockchain)
+	can.bloomIndexer.Start(can.blockchain)
 
 	if config.TxPool.Journal != "" {
 		config.TxPool.Journal = ctx.ResolvePath(config.TxPool.Journal)
 	}
-	eth.txPool = kernel.NewTxPool(config.TxPool, eth.chainConfig, eth.blockchain)
+	can.txPool = kernel.NewTxPool(config.TxPool, can.chainConfig, can.blockchain)
 
-	if eth.protocolManager, err = NewProtocolManager(eth.chainConfig, config.SyncMode, config.NetworkId, eth.eventMux, eth.txPool, eth.engine, eth.blockchain, chainDb); err != nil {
+	if can.protocolManager, err = NewProtocolManager(can.chainConfig, config.SyncMode, config.NetworkId, can.eventMux, can.txPool, can.engine, can.blockchain, chainDb); err != nil {
 		return nil, err
 	}
 
-	eth.miner = miner.New(eth, eth.chainConfig, eth.EventMux(), eth.engine, config.MinerRecommit, config.MinerGasFloor, config.MinerGasCeil)
-	eth.miner.SetExtra(makeExtraData(config.MinerExtraData))
+	can.miner = miner.New(can, can.chainConfig, can.EventMux(), can.engine, config.MinerRecommit, config.MinerGasFloor, config.MinerGasCeil)
+	can.miner.SetExtra(makeExtraData(config.MinerExtraData))
 
-	eth.APIBackend = &EthAPIBackend{eth, nil}
+	can.APIBackend = &CanAPIBackend{can, nil}
 	gpoParams := config.GPO
 	if gpoParams.Default == nil {
 		gpoParams.Default = config.MinerGasPrice
 	}
-	eth.APIBackend.gpo = gasprice.NewOracle(eth.APIBackend, gpoParams)
+	can.APIBackend.gpo = gasprice.NewOracle(can.APIBackend, gpoParams)
 
-	return eth, nil
+	return can, nil
 }
 
 func makeExtraData(extra []byte) []byte {
@@ -365,10 +365,10 @@ func (s *CANChain) NetVersion() uint64                 { return s.networkID }
 func (s *CANChain) Downloader() *downloader.Downloader { return s.protocolManager.downloader }
 
 func (s *CANChain) Protocols() []p2p.Protocol {
-	if s.lesServer == nil {
+	if s.lcsServer == nil {
 		return s.protocolManager.SubProtocols
 	}
-	return append(s.protocolManager.SubProtocols, s.lesServer.Protocols()...)
+	return append(s.protocolManager.SubProtocols, s.lcsServer.Protocols()...)
 }
 
 func (s *CANChain) Start(srvr *p2p.Server) error {
@@ -384,8 +384,8 @@ func (s *CANChain) Start(srvr *p2p.Server) error {
 		maxPeers -= s.config.LightPeers
 	}
 	s.protocolManager.Start(maxPeers)
-	if s.lesServer != nil {
-		s.lesServer.Start(srvr)
+	if s.lcsServer != nil {
+		s.lcsServer.Start(srvr)
 	}
 	return nil
 }
@@ -395,8 +395,8 @@ func (s *CANChain) Stop() error {
 	s.blockchain.Stop()
 	s.engine.Close()
 	s.protocolManager.Stop()
-	if s.lesServer != nil {
-		s.lesServer.Stop()
+	if s.lcsServer != nil {
+		s.lcsServer.Stop()
 	}
 	s.txPool.Stop()
 	s.miner.Stop()

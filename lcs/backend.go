@@ -29,7 +29,7 @@ import (
 )
 
 type LightCANChain struct {
-	lesCommons
+	lcsCommons
 
 	odr          *LesOdr
 	relay        *LesTxRelay
@@ -73,7 +73,7 @@ func New(ctx *node.ServiceContext, config *can.Config) (*LightCANChain, error) {
 	quitSync := make(chan struct{})
 
 	leth := &LightCANChain{
-		lesCommons: lesCommons{
+		lcsCommons: lcsCommons{
 			chainDb: chainDb,
 			config:  config,
 			iConfig: light.DefaultClientIndexerConfig,

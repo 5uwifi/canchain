@@ -66,19 +66,19 @@ func (api *PrivateDebugAPI) TraceChain(ctx context.Context, start, end rpc.Block
 
 	switch start {
 	case rpc.PendingBlockNumber:
-		from = api.eth.miner.PendingBlock()
+		from = api.can.miner.PendingBlock()
 	case rpc.LatestBlockNumber:
-		from = api.eth.blockchain.CurrentBlock()
+		from = api.can.blockchain.CurrentBlock()
 	default:
-		from = api.eth.blockchain.GetBlockByNumber(uint64(start))
+		from = api.can.blockchain.GetBlockByNumber(uint64(start))
 	}
 	switch end {
 	case rpc.PendingBlockNumber:
-		to = api.eth.miner.PendingBlock()
+		to = api.can.miner.PendingBlock()
 	case rpc.LatestBlockNumber:
-		to = api.eth.blockchain.CurrentBlock()
+		to = api.can.blockchain.CurrentBlock()
 	default:
-		to = api.eth.blockchain.GetBlockByNumber(uint64(end))
+		to = api.can.blockchain.GetBlockByNumber(uint64(end))
 	}
 	if from == nil {
 		return nil, fmt.Errorf("starting block #%d not found", start)
@@ -100,10 +100,10 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 	sub := notifier.CreateSubscription()
 
 	origin := start.NumberU64()
-	database := state.NewDatabase(api.eth.ChainDb())
+	database := state.NewDatabase(api.can.ChainDb())
 
 	if number := start.NumberU64(); number > 0 {
-		start = api.eth.blockchain.GetBlock(start.ParentHash(), start.NumberU64()-1)
+		start = api.can.blockchain.GetBlock(start.ParentHash(), start.NumberU64()-1)
 		if start == nil {
 			return nil, fmt.Errorf("parent block #%d not found", number-1)
 		}
@@ -115,7 +115,7 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 			reexec = *config.Reexec
 		}
 		for i := uint64(0); i < reexec; i++ {
-			start = api.eth.blockchain.GetBlock(start.ParentHash(), start.NumberU64()-1)
+			start = api.can.blockchain.GetBlock(start.ParentHash(), start.NumberU64()-1)
 			if start == nil {
 				break
 			}
@@ -153,7 +153,7 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 
 				for i, tx := range task.block.Transactions() {
 					msg, _ := tx.AsMessage(signer)
-					vmctx := kernel.NewEVMContext(msg, task.block.Header(), api.eth.blockchain, nil)
+					vmctx := kernel.NewEVMContext(msg, task.block.Header(), api.can.blockchain, nil)
 
 					res, err := api.traceTx(ctx, msg, vmctx, task.statedb, config)
 					if err != nil {
@@ -211,7 +211,7 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 				}
 				logged = time.Now()
 			}
-			block := api.eth.blockchain.GetBlockByNumber(number)
+			block := api.can.blockchain.GetBlockByNumber(number)
 			if block == nil {
 				failed = fmt.Errorf("block #%d not found", number)
 				break
@@ -226,7 +226,7 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 				}
 				traced += uint64(len(txs))
 			}
-			_, _, _, err := api.eth.blockchain.Processor().Process(block, statedb, vm.Config{})
+			_, _, _, err := api.can.blockchain.Processor().Process(block, statedb, vm.Config{})
 			if err != nil {
 				failed = err
 				break
@@ -284,11 +284,11 @@ func (api *PrivateDebugAPI) TraceBlockByNumber(ctx context.Context, number rpc.B
 
 	switch number {
 	case rpc.PendingBlockNumber:
-		block = api.eth.miner.PendingBlock()
+		block = api.can.miner.PendingBlock()
 	case rpc.LatestBlockNumber:
-		block = api.eth.blockchain.CurrentBlock()
+		block = api.can.blockchain.CurrentBlock()
 	default:
-		block = api.eth.blockchain.GetBlockByNumber(uint64(number))
+		block = api.can.blockchain.GetBlockByNumber(uint64(number))
 	}
 	if block == nil {
 		return nil, fmt.Errorf("block #%d not found", number)
@@ -297,7 +297,7 @@ func (api *PrivateDebugAPI) TraceBlockByNumber(ctx context.Context, number rpc.B
 }
 
 func (api *PrivateDebugAPI) TraceBlockByHash(ctx context.Context, hash common.Hash, config *TraceConfig) ([]*txTraceResult, error) {
-	block := api.eth.blockchain.GetBlockByHash(hash)
+	block := api.can.blockchain.GetBlockByHash(hash)
 	if block == nil {
 		return nil, fmt.Errorf("block #%x not found", hash)
 	}
@@ -321,10 +321,10 @@ func (api *PrivateDebugAPI) TraceBlockFromFile(ctx context.Context, file string,
 }
 
 func (api *PrivateDebugAPI) traceBlock(ctx context.Context, block *types.Block, config *TraceConfig) ([]*txTraceResult, error) {
-	if err := api.eth.engine.VerifyHeader(api.eth.blockchain, block.Header(), true); err != nil {
+	if err := api.can.engine.VerifyHeader(api.can.blockchain, block.Header(), true); err != nil {
 		return nil, err
 	}
-	parent := api.eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
+	parent := api.can.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 	if parent == nil {
 		return nil, fmt.Errorf("parent %x not found", block.ParentHash())
 	}
@@ -356,7 +356,7 @@ func (api *PrivateDebugAPI) traceBlock(ctx context.Context, block *types.Block, 
 
 			for task := range jobs {
 				msg, _ := txs[task.index].AsMessage(signer)
-				vmctx := kernel.NewEVMContext(msg, block.Header(), api.eth.blockchain, nil)
+				vmctx := kernel.NewEVMContext(msg, block.Header(), api.can.blockchain, nil)
 
 				res, err := api.traceTx(ctx, msg, vmctx, task.statedb, config)
 				if err != nil {
@@ -372,7 +372,7 @@ func (api *PrivateDebugAPI) traceBlock(ctx context.Context, block *types.Block, 
 		jobs <- &txTraceTask{statedb: statedb.Copy(), index: i}
 
 		msg, _ := tx.AsMessage(signer)
-		vmctx := kernel.NewEVMContext(msg, block.Header(), api.eth.blockchain, nil)
+		vmctx := kernel.NewEVMContext(msg, block.Header(), api.can.blockchain, nil)
 
 		vmenv := vm.NewEVM(vmctx, statedb, api.config, vm.Config{})
 		if _, _, _, err := kernel.ApplyMessage(vmenv, msg, new(kernel.GasPool).AddGas(msg.Gas())); err != nil {
@@ -391,15 +391,15 @@ func (api *PrivateDebugAPI) traceBlock(ctx context.Context, block *types.Block, 
 }
 
 func (api *PrivateDebugAPI) computeStateDB(block *types.Block, reexec uint64) (*state.StateDB, error) {
-	statedb, err := api.eth.blockchain.StateAt(block.Root())
+	statedb, err := api.can.blockchain.StateAt(block.Root())
 	if err == nil {
 		return statedb, nil
 	}
 	origin := block.NumberU64()
-	database := state.NewDatabase(api.eth.ChainDb())
+	database := state.NewDatabase(api.can.ChainDb())
 
 	for i := uint64(0); i < reexec; i++ {
-		block = api.eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
+		block = api.can.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 		if block == nil {
 			break
 		}
@@ -425,10 +425,10 @@ func (api *PrivateDebugAPI) computeStateDB(block *types.Block, reexec uint64) (*
 			log4j.Info("Regenerating historical state", "block", block.NumberU64()+1, "target", origin, "elapsed", time.Since(start))
 			logged = time.Now()
 		}
-		if block = api.eth.blockchain.GetBlockByNumber(block.NumberU64() + 1); block == nil {
+		if block = api.can.blockchain.GetBlockByNumber(block.NumberU64() + 1); block == nil {
 			return nil, fmt.Errorf("block #%d not found", block.NumberU64()+1)
 		}
-		_, _, _, err := api.eth.blockchain.Processor().Process(block, statedb, vm.Config{})
+		_, _, _, err := api.can.blockchain.Processor().Process(block, statedb, vm.Config{})
 		if err != nil {
 			return nil, err
 		}
@@ -451,7 +451,7 @@ func (api *PrivateDebugAPI) computeStateDB(block *types.Block, reexec uint64) (*
 }
 
 func (api *PrivateDebugAPI) TraceTransaction(ctx context.Context, hash common.Hash, config *TraceConfig) (interface{}, error) {
-	tx, blockHash, _, index := rawdb.ReadTransaction(api.eth.ChainDb(), hash)
+	tx, blockHash, _, index := rawdb.ReadTransaction(api.can.ChainDb(), hash)
 	if tx == nil {
 		return nil, fmt.Errorf("transaction %x not found", hash)
 	}
@@ -519,11 +519,11 @@ func (api *PrivateDebugAPI) traceTx(ctx context.Context, message kernel.Message,
 }
 
 func (api *PrivateDebugAPI) computeTxEnv(blockHash common.Hash, txIndex int, reexec uint64) (kernel.Message, vm.Context, *state.StateDB, error) {
-	block := api.eth.blockchain.GetBlockByHash(blockHash)
+	block := api.can.blockchain.GetBlockByHash(blockHash)
 	if block == nil {
 		return nil, vm.Context{}, nil, fmt.Errorf("block %x not found", blockHash)
 	}
-	parent := api.eth.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
+	parent := api.can.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)
 	if parent == nil {
 		return nil, vm.Context{}, nil, fmt.Errorf("parent %x not found", block.ParentHash())
 	}
@@ -535,7 +535,7 @@ func (api *PrivateDebugAPI) computeTxEnv(blockHash common.Hash, txIndex int, ree
 
 	for idx, tx := range block.Transactions() {
 		msg, _ := tx.AsMessage(signer)
-		context := kernel.NewEVMContext(msg, block.Header(), api.eth.blockchain, nil)
+		context := kernel.NewEVMContext(msg, block.Header(), api.can.blockchain, nil)
 		if idx == txIndex {
 			return msg, context, statedb, nil
 		}

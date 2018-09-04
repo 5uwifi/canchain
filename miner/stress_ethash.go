@@ -36,7 +36,7 @@ func main() {
 	for i := 0; i < len(faucets); i++ {
 		faucets[i], _ = crypto.GenerateKey()
 	}
-	ethash.MakeDataset(1, filepath.Join(os.Getenv("HOME"), ".ethash"))
+	ethash.MakeDataset(1, filepath.Join(os.Getenv("HOME"), ".cchash"))
 
 	genesis := makeGenesis(faucets)
 

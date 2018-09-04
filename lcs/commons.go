@@ -14,7 +14,7 @@ import (
 	"github.com/5uwifi/canchain/params"
 )
 
-type lesCommons struct {
+type lcsCommons struct {
 	config                       *can.Config
 	iConfig                      *light.IndexerConfig
 	chainDb                      candb.Database
@@ -31,7 +31,7 @@ type NodeInfo struct {
 	CHT        light.TrustedCheckpoint `json:"cht"`
 }
 
-func (c *lesCommons) makeProtocols(versions []uint) []p2p.Protocol {
+func (c *lcsCommons) makeProtocols(versions []uint) []p2p.Protocol {
 	protos := make([]p2p.Protocol, len(versions))
 	for i, version := range versions {
 		version := version
@@ -54,7 +54,7 @@ func (c *lesCommons) makeProtocols(versions []uint) []p2p.Protocol {
 	return protos
 }
 
-func (c *lesCommons) nodeInfo() interface{} {
+func (c *lcsCommons) nodeInfo() interface{} {
 	var cht light.TrustedCheckpoint
 	sections, _, _ := c.chtIndexer.Sections()
 	sections2, _, _ := c.bloomTrieIndexer.Sections()

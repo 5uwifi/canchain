@@ -6,10 +6,10 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/common/prque"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/consensus"
 	"github.com/5uwifi/canchain/lib/log4j"
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
 const (
@@ -121,7 +121,7 @@ func New(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBloc
 		fetching:       make(map[common.Hash]*announce),
 		fetched:        make(map[common.Hash][]*announce),
 		completing:     make(map[common.Hash]*announce),
-		queue:          prque.New(),
+		queue:          prque.New(nil),
 		queues:         make(map[string]int),
 		queued:         make(map[common.Hash]*inject),
 		getBlock:       getBlock,
@@ -237,7 +237,7 @@ func (f *Fetcher) loop() {
 			}
 			number := op.block.NumberU64()
 			if number > height+1 {
-				f.queue.Push(op, -float32(number))
+				f.queue.Push(op, -int64(number))
 				if f.queueChangeHook != nil {
 					f.queueChangeHook(hash, true)
 				}
@@ -514,7 +514,7 @@ func (f *Fetcher) enqueue(peer string, block *types.Block) {
 		}
 		f.queues[peer] = count
 		f.queued[hash] = op
-		f.queue.Push(op, -float32(block.NumberU64()))
+		f.queue.Push(op, -int64(block.NumberU64()))
 		if f.queueChangeHook != nil {
 			f.queueChangeHook(op.block.Hash(), true)
 		}

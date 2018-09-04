@@ -25,7 +25,7 @@ type Miner struct {
 	mux      *event.TypeMux
 	worker   *worker
 	coinbase common.Address
-	eth      Backend
+	can      Backend
 	engine   consensus.Engine
 	exitCh   chan struct{}
 
@@ -33,13 +33,13 @@ type Miner struct {
 	shouldStart int32
 }
 
-func New(eth Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, recommit time.Duration, gasFloor, gasCeil uint64) *Miner {
+func New(can Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, recommit time.Duration, gasFloor, gasCeil uint64) *Miner {
 	miner := &Miner{
-		eth:      eth,
+		can:      can,
 		mux:      mux,
 		engine:   engine,
 		exitCh:   make(chan struct{}),
-		worker:   newWorker(config, engine, eth, mux, recommit, gasFloor, gasCeil),
+		worker:   newWorker(config, engine, can, mux, recommit, gasFloor, gasCeil),
 		canStart: 1,
 	}
 	go miner.update()

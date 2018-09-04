@@ -6,7 +6,7 @@ import (
 
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
+	"github.com/5uwifi/canchain/common/prque"
 )
 
 var ErrNotRequested = errors.New("not requested")
@@ -54,7 +54,7 @@ func NewSync(root common.Hash, database DatabaseReader, callback LeafCallback) *
 		database: database,
 		membatch: newSyncMemBatch(),
 		requests: make(map[common.Hash]*request),
-		queue:    prque.New(),
+		queue:    prque.New(nil),
 	}
 	ts.AddSubTrie(root, 0, common.Hash{}, callback)
 	return ts
@@ -183,7 +183,7 @@ func (s *Sync) schedule(req *request) {
 		old.parents = append(old.parents, req.parents...)
 		return
 	}
-	s.queue.Push(req.hash, float32(req.depth))
+	s.queue.Push(req.hash, int64(req.depth))
 	s.requests[req.hash] = req
 }
 

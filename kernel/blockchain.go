@@ -13,6 +13,7 @@ import (
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/mclock"
+	"github.com/5uwifi/canchain/common/prque"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
@@ -26,7 +27,6 @@ import (
 	"github.com/5uwifi/canchain/lib/trie"
 	"github.com/5uwifi/canchain/params"
 	"github.com/hashicorp/golang-lru"
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
 var (
@@ -113,7 +113,7 @@ func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *par
 		chainConfig:  chainConfig,
 		cacheConfig:  cacheConfig,
 		db:           db,
-		triegc:       prque.New(),
+		triegc:       prque.New(nil),
 		stateCache:   state.NewDatabase(db),
 		quit:         make(chan struct{}),
 		bodyCache:    bodyCache,
@@ -748,7 +748,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 		}
 	} else {
 		triedb.Reference(root, common.Hash{})
-		bc.triegc.Push(root, -float32(block.NumberU64()))
+		bc.triegc.Push(root, -int64(block.NumberU64()))
 
 		if current := block.NumberU64(); current > triesInMemory {
 			var (

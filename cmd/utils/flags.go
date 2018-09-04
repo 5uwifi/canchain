@@ -1116,8 +1116,8 @@ func RegisterEthService(stack *node.Node, cfg *can.Config) {
 		err = stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 			fullNode, err := can.New(ctx, cfg)
 			if fullNode != nil && cfg.LightServ > 0 {
-				ls, _ := lcs.NewLesServer(fullNode, cfg)
-				fullNode.AddLesServer(ls)
+				ls, _ := lcs.NewLcsServer(fullNode, cfg)
+				fullNode.AddLcsServer(ls)
 			}
 			return fullNode, err
 		})
@@ -1137,13 +1137,13 @@ func RegisterShhService(stack *node.Node, cfg *whisper.Config) {
 
 func RegisterEthStatsService(stack *node.Node, url string) {
 	if err := stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
-		var ethServ *can.CANChain
-		ctx.Service(&ethServ)
+		var canServ *can.CANChain
+		ctx.Service(&canServ)
 
 		var lesServ *lcs.LightCANChain
 		ctx.Service(&lesServ)
 
-		return stats.New(url, ethServ, lesServ)
+		return stats.New(url, canServ, lesServ)
 	}); err != nil {
 		Fatalf("Failed to register the CANChain Stats service: %v", err)
 	}

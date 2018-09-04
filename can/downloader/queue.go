@@ -7,10 +7,10 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/common/prque"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/metrics"
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
 var (
@@ -79,11 +79,11 @@ func newQueue() *queue {
 		headerPendPool:   make(map[string]*fetchRequest),
 		headerContCh:     make(chan bool),
 		blockTaskPool:    make(map[common.Hash]*types.Header),
-		blockTaskQueue:   prque.New(),
+		blockTaskQueue:   prque.New(nil),
 		blockPendPool:    make(map[string]*fetchRequest),
 		blockDonePool:    make(map[common.Hash]struct{}),
 		receiptTaskPool:  make(map[common.Hash]*types.Header),
-		receiptTaskQueue: prque.New(),
+		receiptTaskQueue: prque.New(nil),
 		receiptPendPool:  make(map[string]*fetchRequest),
 		receiptDonePool:  make(map[common.Hash]struct{}),
 		resultCache:      make([]*fetchResult, blockCacheItems),
@@ -223,7 +223,7 @@ func (q *queue) ScheduleSkeleton(from uint64, skeleton []*types.Header) {
 		panic("skeleton assembly already in progress")
 	}
 	q.headerTaskPool = make(map[uint64]*types.Header)
-	q.headerTaskQueue = prque.New()
+	q.headerTaskQueue = prque.New(nil)
 	q.headerPeerMiss = make(map[string]map[uint64]struct{})
 	q.headerResults = make([]*types.Header, len(skeleton)*MaxHeaderFetch)
 	q.headerProced = 0
@@ -234,7 +234,7 @@ func (q *queue) ScheduleSkeleton(from uint64, skeleton []*types.Header) {
 		index := from + uint64(i*MaxHeaderFetch)
 
 		q.headerTaskPool[index] = header
-		q.headerTaskQueue.Push(index, -float32(index))
+		q.headerTaskQueue.Push(index, -int64(index))
 	}
 }
 
@@ -272,11 +272,11 @@ func (q *queue) Schedule(headers []*types.Header, from uint64) []*types.Header {
 			continue
 		}
 		q.blockTaskPool[hash] = header
-		q.blockTaskQueue.Push(header, -float32(header.Number.Uint64()))
+		q.blockTaskQueue.Push(header, -int64(header.Number.Uint64()))
 
 		if q.mode == FastSync {
 			q.receiptTaskPool[hash] = header
-			q.receiptTaskQueue.Push(header, -float32(header.Number.Uint64()))
+			q.receiptTaskQueue.Push(header, -int64(header.Number.Uint64()))
 		}
 		inserts = append(inserts, header)
 		q.headerHead = hash
@@ -359,7 +359,7 @@ func (q *queue) ReserveHeaders(p *peerConnection, count int) *fetchRequest {
 		send = from.(uint64)
 	}
 	for _, from := range skip {
-		q.headerTaskQueue.Push(from, -float32(from))
+		q.headerTaskQueue.Push(from, -int64(from))
 	}
 	if send == 0 {
 		return nil
@@ -443,7 +443,7 @@ func (q *queue) reserveHeaders(p *peerConnection, count int, taskPool map[common
 		}
 	}
 	for _, header := range skip {
-		taskQueue.Push(header, -float32(header.Number.Uint64()))
+		taskQueue.Push(header, -int64(header.Number.Uint64()))
 	}
 	if progress {
 		q.active.Signal()
@@ -478,10 +478,10 @@ func (q *queue) cancel(request *fetchRequest, taskQueue *prque.Prque, pendPool m
 	defer q.lock.Unlock()
 
 	if request.From > 0 {
-		taskQueue.Push(request.From, -float32(request.From))
+		taskQueue.Push(request.From, -int64(request.From))
 	}
 	for _, header := range request.Headers {
-		taskQueue.Push(header, -float32(header.Number.Uint64()))
+		taskQueue.Push(header, -int64(header.Number.Uint64()))
 	}
 	delete(pendPool, request.Peer.id)
 }
@@ -492,13 +492,13 @@ func (q *queue) Revoke(peerID string) {
 
 	if request, ok := q.blockPendPool[peerID]; ok {
 		for _, header := range request.Headers {
-			q.blockTaskQueue.Push(header, -float32(header.Number.Uint64()))
+			q.blockTaskQueue.Push(header, -int64(header.Number.Uint64()))
 		}
 		delete(q.blockPendPool, peerID)
 	}
 	if request, ok := q.receiptPendPool[peerID]; ok {
 		for _, header := range request.Headers {
-			q.receiptTaskQueue.Push(header, -float32(header.Number.Uint64()))
+			q.receiptTaskQueue.Push(header, -int64(header.Number.Uint64()))
 		}
 		delete(q.receiptPendPool, peerID)
 	}
@@ -532,10 +532,10 @@ func (q *queue) expire(timeout time.Duration, pendPool map[string]*fetchRequest,
 			timeoutMeter.Mark(1)
 
 			if request.From > 0 {
-				taskQueue.Push(request.From, -float32(request.From))
+				taskQueue.Push(request.From, -int64(request.From))
 			}
 			for _, header := range request.Headers {
-				taskQueue.Push(header, -float32(header.Number.Uint64()))
+				taskQueue.Push(header, -int64(header.Number.Uint64()))
 			}
 			expiries[id] = len(request.Headers)
 		}
@@ -594,7 +594,7 @@ func (q *queue) DeliverHeaders(id string, headers []*types.Header, headerProcCh 
 		}
 		miss[request.From] = struct{}{}
 
-		q.headerTaskQueue.Push(request.From, -float32(request.From))
+		q.headerTaskQueue.Push(request.From, -int64(request.From))
 		return 0, errors.New("delivery not accepted")
 	}
 	copy(q.headerResults[request.From-q.headerOffset:], headers)
@@ -696,7 +696,7 @@ func (q *queue) deliver(id string, taskPool map[common.Hash]*types.Header, taskQ
 	}
 	for _, header := range request.Headers {
 		if header != nil {
-			taskQueue.Push(header, -float32(header.Number.Uint64()))
+			taskQueue.Push(header, -int64(header.Number.Uint64()))
 		}
 	}
 	if accepted > 0 {

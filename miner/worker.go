@@ -85,10 +85,10 @@ type intervalAdjust struct {
 }
 
 type worker struct {
-	config *params.ChainConfig
-	engine consensus.Engine
-	eth    Backend
-	chain  *kernel.BlockChain
+	config       *params.ChainConfig
+	engine       consensus.Engine
+	cannewWorker Backend
+	chain        *kernel.BlockChain
 
 	gasFloor uint64
 	gasCeil  uint64
@@ -133,17 +133,17 @@ type worker struct {
 	resubmitHook func(time.Duration, time.Duration)
 }
 
-func newWorker(config *params.ChainConfig, engine consensus.Engine, eth Backend, mux *event.TypeMux, recommit time.Duration, gasFloor, gasCeil uint64) *worker {
+func newWorker(config *params.ChainConfig, engine consensus.Engine, can Backend, mux *event.TypeMux, recommit time.Duration, gasFloor, gasCeil uint64) *worker {
 	worker := &worker{
 		config:             config,
 		engine:             engine,
-		eth:                eth,
+		cannewWorker:       can,
 		mux:                mux,
-		chain:              eth.BlockChain(),
+		chain:              can.BlockChain(),
 		gasFloor:           gasFloor,
 		gasCeil:            gasCeil,
 		possibleUncles:     make(map[common.Hash]*types.Block),
-		unconfirmed:        newUnconfirmedBlocks(eth.BlockChain(), miningLogAtDepth),
+		unconfirmed:        newUnconfirmedBlocks(can.BlockChain(), miningLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan kernel.NewTxsEvent, txChanSize),
 		chainHeadCh:        make(chan kernel.ChainHeadEvent, chainHeadChanSize),
@@ -156,9 +156,9 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, eth Backend,
 		resubmitIntervalCh: make(chan time.Duration),
 		resubmitAdjustCh:   make(chan *intervalAdjust, resubmitAdjustChanSize),
 	}
-	worker.txsSub = eth.TxPool().SubscribeNewTxsEvent(worker.txsCh)
-	worker.chainHeadSub = eth.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
-	worker.chainSideSub = eth.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
+	worker.txsSub = can.TxPool().SubscribeNewTxsEvent(worker.txsCh)
+	worker.chainHeadSub = can.BlockChain().SubscribeChainHeadEvent(worker.chainHeadCh)
+	worker.chainSideSub = can.BlockChain().SubscribeChainSideEvent(worker.chainSideCh)
 
 	if recommit < minRecommitInterval {
 		log4j.Warn("Sanitizing miner recommit interval", "provided", recommit, "updated", minRecommitInterval)
@@ -740,7 +740,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		w.commit(uncles, nil, false, tstart)
 	}
 
-	pending, err := w.eth.TxPool().Pending()
+	pending, err := w.cannewWorker.TxPool().Pending()
 	if err != nil {
 		log4j.Error("Failed to fetch pending transactions", "err", err)
 		return
@@ -750,7 +750,7 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 		return
 	}
 	localTxs, remoteTxs := make(map[common.Address]types.Transactions), pending
-	for _, account := range w.eth.TxPool().Locals() {
+	for _, account := range w.cannewWorker.TxPool().Locals() {
 		if txs := remoteTxs[account]; len(txs) > 0 {
 			delete(remoteTxs, account)
 			localTxs[account] = txs

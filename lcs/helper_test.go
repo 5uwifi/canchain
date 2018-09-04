@@ -151,7 +151,7 @@ func newTestProtocolManager(lightSync bool, blocks int, generator func(int, *ker
 		return nil, err
 	}
 	if !lightSync {
-		srv := &LcsServer{lesCommons: lesCommons{protocolManager: pm}}
+		srv := &LcsServer{lcsCommons: lcsCommons{protocolManager: pm}}
 		pm.server = srv
 
 		srv.defParams = &flowcontrol.ServerParams{

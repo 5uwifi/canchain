@@ -26,7 +26,7 @@ import (
 )
 
 type PublicEthereumAPI struct {
-	e *CANChain
+	c *CANChain
 }
 
 func NewPublicEthereumAPI(e *CANChain) *PublicEthereumAPI {
@@ -34,7 +34,7 @@ func NewPublicEthereumAPI(e *CANChain) *PublicEthereumAPI {
 }
 
 func (api *PublicEthereumAPI) Canerbase() (common.Address, error) {
-	return api.e.Canerbase()
+	return api.c.Canerbase()
 }
 
 func (api *PublicEthereumAPI) Coinbase() (common.Address, error) {
@@ -42,11 +42,11 @@ func (api *PublicEthereumAPI) Coinbase() (common.Address, error) {
 }
 
 func (api *PublicEthereumAPI) Hashrate() hexutil.Uint64 {
-	return hexutil.Uint64(api.e.Miner().HashRate())
+	return hexutil.Uint64(api.c.Miner().HashRate())
 }
 
 type PublicMinerAPI struct {
-	e *CANChain
+	c *CANChain
 }
 
 func NewPublicMinerAPI(e *CANChain) *PublicMinerAPI {
@@ -54,63 +54,63 @@ func NewPublicMinerAPI(e *CANChain) *PublicMinerAPI {
 }
 
 func (api *PublicMinerAPI) Mining() bool {
-	return api.e.IsMining()
+	return api.c.IsMining()
 }
 
 type PrivateMinerAPI struct {
-	e *CANChain
+	c *CANChain
 }
 
 func NewPrivateMinerAPI(e *CANChain) *PrivateMinerAPI {
-	return &PrivateMinerAPI{e: e}
+	return &PrivateMinerAPI{c: e}
 }
 
 func (api *PrivateMinerAPI) Start(threads *int) error {
 	if threads == nil {
-		return api.e.StartMining(runtime.NumCPU())
+		return api.c.StartMining(runtime.NumCPU())
 	}
-	return api.e.StartMining(*threads)
+	return api.c.StartMining(*threads)
 }
 
 func (api *PrivateMinerAPI) Stop() {
-	api.e.StopMining()
+	api.c.StopMining()
 }
 
 func (api *PrivateMinerAPI) SetExtra(extra string) (bool, error) {
-	if err := api.e.Miner().SetExtra([]byte(extra)); err != nil {
+	if err := api.c.Miner().SetExtra([]byte(extra)); err != nil {
 		return false, err
 	}
 	return true, nil
 }
 
 func (api *PrivateMinerAPI) SetGasPrice(gasPrice hexutil.Big) bool {
-	api.e.lock.Lock()
-	api.e.gasPrice = (*big.Int)(&gasPrice)
-	api.e.lock.Unlock()
+	api.c.lock.Lock()
+	api.c.gasPrice = (*big.Int)(&gasPrice)
+	api.c.lock.Unlock()
 
-	api.e.txPool.SetGasPrice((*big.Int)(&gasPrice))
+	api.c.txPool.SetGasPrice((*big.Int)(&gasPrice))
 	return true
 }
 
 func (api *PrivateMinerAPI) SetCanerbase(canerbase common.Address) bool {
-	api.e.SetCanerbase(canerbase)
+	api.c.SetCanerbase(canerbase)
 	return true
 }
 
 func (api *PrivateMinerAPI) SetRecommitInterval(interval int) {
-	api.e.Miner().SetRecommitInterval(time.Duration(interval) * time.Millisecond)
+	api.c.Miner().SetRecommitInterval(time.Duration(interval) * time.Millisecond)
 }
 
 func (api *PrivateMinerAPI) GetHashrate() uint64 {
-	return api.e.miner.HashRate()
+	return api.c.miner.HashRate()
 }
 
 type PrivateAdminAPI struct {
-	eth *CANChain
+	can *CANChain
 }
 
 func NewPrivateAdminAPI(eth *CANChain) *PrivateAdminAPI {
-	return &PrivateAdminAPI{eth: eth}
+	return &PrivateAdminAPI{can: eth}
 }
 
 func (api *PrivateAdminAPI) ExportChain(file string) (bool, error) {
@@ -126,7 +126,7 @@ func (api *PrivateAdminAPI) ExportChain(file string) (bool, error) {
 		defer writer.(*gzip.Writer).Close()
 	}
 
-	if err := api.eth.BlockChain().Export(writer); err != nil {
+	if err := api.can.BlockChain().Export(writer); err != nil {
 		return false, err
 	}
 	return true, nil
@@ -174,11 +174,11 @@ func (api *PrivateAdminAPI) ImportChain(file string) (bool, error) {
 			break
 		}
 
-		if hasAllBlocks(api.eth.BlockChain(), blocks) {
+		if hasAllBlocks(api.can.BlockChain(), blocks) {
 			blocks = blocks[:0]
 			continue
 		}
-		if _, err := api.eth.BlockChain().InsertChain(blocks); err != nil {
+		if _, err := api.can.BlockChain().InsertChain(blocks); err != nil {
 			return false, fmt.Errorf("batch %d: failed to insert: %v", batch, err)
 		}
 		blocks = blocks[:0]
@@ -187,28 +187,28 @@ func (api *PrivateAdminAPI) ImportChain(file string) (bool, error) {
 }
 
 type PublicDebugAPI struct {
-	eth *CANChain
+	can *CANChain
 }
 
 func NewPublicDebugAPI(eth *CANChain) *PublicDebugAPI {
-	return &PublicDebugAPI{eth: eth}
+	return &PublicDebugAPI{can: eth}
 }
 
 func (api *PublicDebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error) {
 	if blockNr == rpc.PendingBlockNumber {
-		_, stateDb := api.eth.miner.Pending()
+		_, stateDb := api.can.miner.Pending()
 		return stateDb.RawDump(), nil
 	}
 	var block *types.Block
 	if blockNr == rpc.LatestBlockNumber {
-		block = api.eth.blockchain.CurrentBlock()
+		block = api.can.blockchain.CurrentBlock()
 	} else {
-		block = api.eth.blockchain.GetBlockByNumber(uint64(blockNr))
+		block = api.can.blockchain.GetBlockByNumber(uint64(blockNr))
 	}
 	if block == nil {
 		return state.Dump{}, fmt.Errorf("block #%d not found", blockNr)
 	}
-	stateDb, err := api.eth.BlockChain().StateAt(block.Root())
+	stateDb, err := api.can.BlockChain().StateAt(block.Root())
 	if err != nil {
 		return state.Dump{}, err
 	}
@@ -217,15 +217,15 @@ func (api *PublicDebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error
 
 type PrivateDebugAPI struct {
 	config *params.ChainConfig
-	eth    *CANChain
+	can    *CANChain
 }
 
 func NewPrivateDebugAPI(config *params.ChainConfig, eth *CANChain) *PrivateDebugAPI {
-	return &PrivateDebugAPI{config: config, eth: eth}
+	return &PrivateDebugAPI{config: config, can: eth}
 }
 
 func (api *PrivateDebugAPI) Preimage(ctx context.Context, hash common.Hash) (hexutil.Bytes, error) {
-	if preimage := rawdb.ReadPreimage(api.eth.ChainDb(), hash); preimage != nil {
+	if preimage := rawdb.ReadPreimage(api.can.ChainDb(), hash); preimage != nil {
 		return preimage, nil
 	}
 	return nil, errors.New("unknown preimage")
@@ -238,7 +238,7 @@ type BadBlockArgs struct {
 }
 
 func (api *PrivateDebugAPI) GetBadBlocks(ctx context.Context) ([]*BadBlockArgs, error) {
-	blocks := api.eth.BlockChain().BadBlocks()
+	blocks := api.can.BlockChain().BadBlocks()
 	results := make([]*BadBlockArgs, len(blocks))
 
 	var err error
@@ -307,19 +307,19 @@ func storageRangeAt(st state.Trie, start []byte, maxResult int) (StorageRangeRes
 func (api *PrivateDebugAPI) GetModifiedAccountsByNumber(startNum uint64, endNum *uint64) ([]common.Address, error) {
 	var startBlock, endBlock *types.Block
 
-	startBlock = api.eth.blockchain.GetBlockByNumber(startNum)
+	startBlock = api.can.blockchain.GetBlockByNumber(startNum)
 	if startBlock == nil {
 		return nil, fmt.Errorf("start block %x not found", startNum)
 	}
 
 	if endNum == nil {
 		endBlock = startBlock
-		startBlock = api.eth.blockchain.GetBlockByHash(startBlock.ParentHash())
+		startBlock = api.can.blockchain.GetBlockByHash(startBlock.ParentHash())
 		if startBlock == nil {
 			return nil, fmt.Errorf("block %x has no parent", endBlock.Number())
 		}
 	} else {
-		endBlock = api.eth.blockchain.GetBlockByNumber(*endNum)
+		endBlock = api.can.blockchain.GetBlockByNumber(*endNum)
 		if endBlock == nil {
 			return nil, fmt.Errorf("end block %d not found", *endNum)
 		}
@@ -329,19 +329,19 @@ func (api *PrivateDebugAPI) GetModifiedAccountsByNumber(startNum uint64, endNum 
 
 func (api *PrivateDebugAPI) GetModifiedAccountsByHash(startHash common.Hash, endHash *common.Hash) ([]common.Address, error) {
 	var startBlock, endBlock *types.Block
-	startBlock = api.eth.blockchain.GetBlockByHash(startHash)
+	startBlock = api.can.blockchain.GetBlockByHash(startHash)
 	if startBlock == nil {
 		return nil, fmt.Errorf("start block %x not found", startHash)
 	}
 
 	if endHash == nil {
 		endBlock = startBlock
-		startBlock = api.eth.blockchain.GetBlockByHash(startBlock.ParentHash())
+		startBlock = api.can.blockchain.GetBlockByHash(startBlock.ParentHash())
 		if startBlock == nil {
 			return nil, fmt.Errorf("block %x has no parent", endBlock.Number())
 		}
 	} else {
-		endBlock = api.eth.blockchain.GetBlockByHash(*endHash)
+		endBlock = api.can.blockchain.GetBlockByHash(*endHash)
 		if endBlock == nil {
 			return nil, fmt.Errorf("end block %x not found", *endHash)
 		}
@@ -354,11 +354,11 @@ func (api *PrivateDebugAPI) getModifiedAccounts(startBlock, endBlock *types.Bloc
 		return nil, fmt.Errorf("start block height (%d) must be less than end block height (%d)", startBlock.Number().Uint64(), endBlock.Number().Uint64())
 	}
 
-	oldTrie, err := trie.NewSecure(startBlock.Root(), trie.NewDatabase(api.eth.chainDb), 0)
+	oldTrie, err := trie.NewSecure(startBlock.Root(), trie.NewDatabase(api.can.chainDb), 0)
 	if err != nil {
 		return nil, err
 	}
-	newTrie, err := trie.NewSecure(endBlock.Root(), trie.NewDatabase(api.eth.chainDb), 0)
+	newTrie, err := trie.NewSecure(endBlock.Root(), trie.NewDatabase(api.can.chainDb), 0)
 	if err != nil {
 		return nil, err
 	}

@@ -43,7 +43,7 @@ func TestFileStorage(t *testing.T) {
 			CipherText: common.Hex2Bytes("2df87baf86b5073ef1f03e3cc738de75b511400f5465bb0ddeacf47ae4dc267d"),
 		},
 	}
-	d, err := ioutil.TempDir("", "eth-encrypted-storage-test")
+	d, err := ioutil.TempDir("", "can-encrypted-storage-test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ func TestFileStorage(t *testing.T) {
 func TestEnd2End(t *testing.T) {
 	log4j.Root().SetHandler(log4j.LvlFilterHandler(log4j.Lvl(3), log4j.StreamHandler(colorable.NewColorableStderr(), log4j.TerminalFormat(true))))
 
-	d, err := ioutil.TempDir("", "eth-encrypted-storage-test")
+	d, err := ioutil.TempDir("", "can-encrypted-storage-test")
 	if err != nil {
 		t.Fatal(err)
 	}

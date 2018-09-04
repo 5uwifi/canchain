@@ -10,13 +10,13 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/common/prque"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/metrics"
 	"github.com/5uwifi/canchain/params"
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
 const (
@@ -781,10 +781,10 @@ func (pool *TxPool) promoteExecutables(accounts []common.Address) {
 	}
 	if pending > pool.config.GlobalSlots {
 		pendingBeforeCap := pending
-		spammers := prque.New()
+		spammers := prque.New(nil)
 		for addr, list := range pool.pending {
 			if !pool.locals.contains(addr) && uint64(list.Len()) > pool.config.AccountSlots {
-				spammers.Push(addr, float32(list.Len()))
+				spammers.Push(addr, int64(list.Len()))
 			}
 		}
 		offenders := []common.Address{}

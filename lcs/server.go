@@ -22,30 +22,30 @@ import (
 )
 
 type LcsServer struct {
-	lesCommons
+	lcsCommons
 
 	fcManager   *flowcontrol.ClientManager
 	fcCostStats *requestCostStats
 	defParams   *flowcontrol.ServerParams
-	lesTopics   []discv5.Topic
+	lcsTopics   []discv5.Topic
 	privateKey  *ecdsa.PrivateKey
 	quitSync    chan struct{}
 }
 
-func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
+func NewLcsServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 	quitSync := make(chan struct{})
 	pm, err := NewProtocolManager(eth.BlockChain().Config(), light.DefaultServerIndexerConfig, false, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
 
-	lesTopics := make([]discv5.Topic, len(AdvertiseProtocolVersions))
+	lcsTopics := make([]discv5.Topic, len(AdvertiseProtocolVersions))
 	for i, pv := range AdvertiseProtocolVersions {
-		lesTopics[i] = lcsTopic(eth.BlockChain().Genesis().Hash(), pv)
+		lcsTopics[i] = lcsTopic(eth.BlockChain().Genesis().Hash(), pv)
 	}
 
 	srv := &LcsServer{
-		lesCommons: lesCommons{
+		lcsCommons: lcsCommons{
 			config:           config,
 			chainDb:          eth.ChainDb(),
 			iConfig:          light.DefaultServerIndexerConfig,
@@ -54,7 +54,7 @@ func NewLesServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 			protocolManager:  pm,
 		},
 		quitSync:  quitSync,
-		lesTopics: lesTopics,
+		lcsTopics: lcsTopics,
 	}
 
 	logger := log4j.New()
@@ -95,7 +95,7 @@ func (s *LcsServer) Protocols() []p2p.Protocol {
 func (s *LcsServer) Start(srvr *p2p.Server) {
 	s.protocolManager.Start(s.config.LightPeers)
 	if srvr.DiscV5 != nil {
-		for _, topic := range s.lesTopics {
+		for _, topic := range s.lcsTopics {
 			topic := topic
 			go func() {
 				logger := log4j.New("topic", topic)
