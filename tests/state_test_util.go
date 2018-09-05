@@ -125,7 +125,9 @@ func (t *StateTest) Run(subtest StateSubtest, vmconfig vm.Config) (*state.StateD
 	if logs := rlpHash(statedb.Logs()); logs != common.Hash(post.Logs) {
 		return statedb, fmt.Errorf("post state logs hash mismatch: got %x, want %x", logs, post.Logs)
 	}
-	root, _ := statedb.Commit(config.IsEIP158(block.Number()))
+	statedb.Commit(config.IsEIP158(block.Number()))
+	statedb.AddBalance(block.Coinbase(), new(big.Int))
+	root := statedb.IntermediateRoot(config.IsEIP158(block.Number()))
 	if root != common.Hash(post.Root) {
 		return statedb, fmt.Errorf("post state root mismatch: got %x, want %x", root, post.Root)
 	}

@@ -327,7 +327,7 @@ func opSAR(pc *uint64, interpreter *EVMInterpreter, contract *Contract, memory *
 	defer interpreter.intPool.put(shift)
 
 	if shift.Cmp(common.Big256) >= 0 {
-		if value.Sign() > 0 {
+		if value.Sign() >= 0 {
 			value.SetUint64(0)
 		} else {
 			value.SetInt64(-1)

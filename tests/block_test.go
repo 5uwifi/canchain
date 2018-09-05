@@ -12,9 +12,8 @@ func TestBlockchain(t *testing.T) {
 	bt.skipLoad(`^bcForgedTest/bcForkUncle\.json`)
 	bt.skipLoad(`^bcMultiChainTest/(ChainAtoChainB_blockorder|CallContractFromNotBestBlock)`)
 	bt.skipLoad(`^bcTotalDifficultyTest/(lotsOfLeafs|lotsOfBranches|sideChainWithMoreTransactions)`)
-	bt.skipLoad(`(?i)(constantinople)`)
+	bt.fails(`blockhashNonConstArg_Constantinople`, "Broken test")
 
-	bt.skipLoad(`^bcWalletTest.*_Byzantium$`)
 
 	bt.walk(t, blockTestDir, func(t *testing.T, name string, test *BlockTest) {
 		if err := bt.checkFailure(t, name, test.Run()); err != nil {
