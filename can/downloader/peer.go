@@ -120,7 +120,7 @@ func (p *peerConnection) Reset() {
 
 func (p *peerConnection) FetchHeaders(from uint64, count int) error {
 	if p.version < 62 {
-		panic(fmt.Sprintf("header fetch [eth/62+] requested on eth/%d", p.version))
+		panic(fmt.Sprintf("header fetch [can/62+] requested on can/%d", p.version))
 	}
 	if !atomic.CompareAndSwapInt32(&p.headerIdle, 0, 1) {
 		return errAlreadyFetching
@@ -134,7 +134,7 @@ func (p *peerConnection) FetchHeaders(from uint64, count int) error {
 
 func (p *peerConnection) FetchBodies(request *fetchRequest) error {
 	if p.version < 62 {
-		panic(fmt.Sprintf("body fetch [eth/62+] requested on eth/%d", p.version))
+		panic(fmt.Sprintf("body fetch [can/62+] requested on can/%d", p.version))
 	}
 	if !atomic.CompareAndSwapInt32(&p.blockIdle, 0, 1) {
 		return errAlreadyFetching
@@ -152,7 +152,7 @@ func (p *peerConnection) FetchBodies(request *fetchRequest) error {
 
 func (p *peerConnection) FetchReceipts(request *fetchRequest) error {
 	if p.version < 63 {
-		panic(fmt.Sprintf("body fetch [eth/63+] requested on eth/%d", p.version))
+		panic(fmt.Sprintf("body fetch [can/63+] requested on can/%d", p.version))
 	}
 	if !atomic.CompareAndSwapInt32(&p.receiptIdle, 0, 1) {
 		return errAlreadyFetching
@@ -170,7 +170,7 @@ func (p *peerConnection) FetchReceipts(request *fetchRequest) error {
 
 func (p *peerConnection) FetchNodeData(hashes []common.Hash) error {
 	if p.version < 63 {
-		panic(fmt.Sprintf("node data fetch [eth/63+] requested on eth/%d", p.version))
+		panic(fmt.Sprintf("node data fetch [can/63+] requested on can/%d", p.version))
 	}
 	if !atomic.CompareAndSwapInt32(&p.stateIdle, 0, 1) {
 		return errAlreadyFetching

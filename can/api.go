@@ -109,8 +109,8 @@ type PrivateAdminAPI struct {
 	can *CANChain
 }
 
-func NewPrivateAdminAPI(eth *CANChain) *PrivateAdminAPI {
-	return &PrivateAdminAPI{can: eth}
+func NewPrivateAdminAPI(can *CANChain) *PrivateAdminAPI {
+	return &PrivateAdminAPI{can: can}
 }
 
 func (api *PrivateAdminAPI) ExportChain(file string) (bool, error) {
@@ -190,8 +190,8 @@ type PublicDebugAPI struct {
 	can *CANChain
 }
 
-func NewPublicDebugAPI(eth *CANChain) *PublicDebugAPI {
-	return &PublicDebugAPI{can: eth}
+func NewPublicDebugAPI(can *CANChain) *PublicDebugAPI {
+	return &PublicDebugAPI{can: can}
 }
 
 func (api *PublicDebugAPI) DumpBlock(blockNr rpc.BlockNumber) (state.Dump, error) {
@@ -220,8 +220,8 @@ type PrivateDebugAPI struct {
 	can    *CANChain
 }
 
-func NewPrivateDebugAPI(config *params.ChainConfig, eth *CANChain) *PrivateDebugAPI {
-	return &PrivateDebugAPI{config: config, can: eth}
+func NewPrivateDebugAPI(config *params.ChainConfig, can *CANChain) *PrivateDebugAPI {
+	return &PrivateDebugAPI{config: config, can: can}
 }
 
 func (api *PrivateDebugAPI) Preimage(ctx context.Context, hash common.Hash) (hexutil.Bytes, error) {

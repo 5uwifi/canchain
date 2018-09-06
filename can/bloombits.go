@@ -23,20 +23,20 @@ const (
 	bloomRetrievalWait = time.Duration(0)
 )
 
-func (eth *CANChain) startBloomHandlers(sectionSize uint64) {
+func (can *CANChain) startBloomHandlers(sectionSize uint64) {
 	for i := 0; i < bloomServiceThreads; i++ {
 		go func() {
 			for {
 				select {
-				case <-eth.shutdownChan:
+				case <-can.shutdownChan:
 					return
 
-				case request := <-eth.bloomRequests:
+				case request := <-can.bloomRequests:
 					task := <-request
 					task.Bitsets = make([][]byte, len(task.Sections))
 					for i, section := range task.Sections {
-						head := rawdb.ReadCanonicalHash(eth.chainDb, (section+1)*sectionSize-1)
-						if compVector, err := rawdb.ReadBloomBits(eth.chainDb, task.Bit, section, head); err == nil {
+						head := rawdb.ReadCanonicalHash(can.chainDb, (section+1)*sectionSize-1)
+						if compVector, err := rawdb.ReadBloomBits(can.chainDb, task.Bit, section, head); err == nil {
 							if blob, err := bitutil.DecompressBytes(compVector, int(sectionSize/8)); err == nil {
 								task.Bitsets[i] = blob
 							} else {

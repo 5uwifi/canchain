@@ -559,7 +559,7 @@ func (ethash *Ethash) Hashrate() float64 {
 func (ethash *Ethash) APIs(chain consensus.ChainReader) []rpc.API {
 	return []rpc.API{
 		{
-			Namespace: "eth",
+			Namespace: "can",
 			Version:   "1.0",
 			Service:   &API{ethash},
 			Public:    true,

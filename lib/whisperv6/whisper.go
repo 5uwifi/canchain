@@ -37,6 +37,8 @@ const (
 	minPowToleranceIdx
 	bloomFilterIdx
 	bloomFilterToleranceIdx
+	lightClientModeIdx
+	restrictConnectionBetweenLightClientsIdx
 )
 
 type Whisper struct {
@@ -61,8 +63,6 @@ type Whisper struct {
 	settings syncmap.Map
 
 	syncAllowance int
-
-	lightClient bool
 
 	statsMu sync.Mutex
 	stats   Statistics
@@ -92,6 +92,7 @@ func New(cfg *Config) *Whisper {
 	whisper.settings.Store(minPowIdx, cfg.MinimumAcceptedPOW)
 	whisper.settings.Store(maxMsgSizeIdx, cfg.MaxMessageSize)
 	whisper.settings.Store(overflowIdx, false)
+	whisper.settings.Store(restrictConnectionBetweenLightClientsIdx, cfg.RestrictConnectionBetweenLightClients)
 
 	whisper.protocol = p2p.Protocol{
 		Name:    ProtocolName,
@@ -227,6 +228,28 @@ func (whisper *Whisper) SetMinimumPowTest(val float64) {
 	whisper.settings.Store(minPowIdx, val)
 	whisper.notifyPeersAboutPowRequirementChange(val)
 	whisper.settings.Store(minPowToleranceIdx, val)
+}
+
+func (whisper *Whisper) SetLightClientMode(v bool) {
+	whisper.settings.Store(lightClientModeIdx, v)
+}
+
+func (whisper *Whisper) LightClientMode() bool {
+	val, exist := whisper.settings.Load(lightClientModeIdx)
+	if !exist || val == nil {
+		return false
+	}
+	v, ok := val.(bool)
+	return v && ok
+}
+
+func (whisper *Whisper) LightClientModeConnectionRestricted() bool {
+	val, exist := whisper.settings.Load(restrictConnectionBetweenLightClientsIdx)
+	if !exist || val == nil {
+		return false
+	}
+	v, ok := val.(bool)
+	return v && ok
 }
 
 func (whisper *Whisper) notifyPeersAboutPowRequirementChange(pow float64) {
@@ -574,7 +597,7 @@ func (whisper *Whisper) runMessageLoop(p *Peer, rw p2p.MsgReadWriter) error {
 
 			trouble := false
 			for _, env := range envelopes {
-				cached, err := whisper.add(env, whisper.lightClient)
+				cached, err := whisper.add(env, whisper.LightClientMode())
 				if err != nil {
 					trouble = true
 					log4j.Error("bad envelope received, peer will be disconnected", "peer", p.peer.ID(), "err", err)

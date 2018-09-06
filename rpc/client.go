@@ -303,7 +303,7 @@ func (c *Client) BatchCallContext(ctx context.Context, b []BatchElem) error {
 }
 
 func (c *Client) EthSubscribe(ctx context.Context, channel interface{}, args ...interface{}) (*ClientSubscription, error) {
-	return c.Subscribe(ctx, "eth", channel, args...)
+	return c.Subscribe(ctx, "can", channel, args...)
 }
 
 func (c *Client) ShhSubscribe(ctx context.Context, channel interface{}, args ...interface{}) (*ClientSubscription, error) {

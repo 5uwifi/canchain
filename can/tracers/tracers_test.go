@@ -22,8 +22,8 @@ import (
 
 /*
 var makeTest = function(tx, rewind) {
-  var block   = eth.getBlock(eth.getTransaction(tx).blockHash);
-  var genesis = eth.getBlock(block.parentHash);
+  var block   = can.getBlock(can.getTransaction(tx).blockHash);
+  var genesis = can.getBlock(block.parentHash);
 
   delete genesis.gasUsed;
   delete genesis.logsBloom;
@@ -43,7 +43,7 @@ var makeTest = function(tx, rewind) {
   for (var key in genesis.alloc) {
     genesis.alloc[key].nonce = genesis.alloc[key].nonce.toString();
   }
-  genesis.config = admin.nodeInfo.protocols.eth.config;
+  genesis.config = admin.nodeInfo.protocols.can.config;
 
   var result = debug.traceTransaction(tx, {tracer: "callTracer", rewind: rewind});
   delete result.time;
@@ -57,7 +57,7 @@ var makeTest = function(tx, rewind) {
       gasLimit:   block.gasLimit.toString(),
       miner:      block.miner,
     },
-    input:  eth.getRawTransaction(tx),
+    input:  can.getRawTransaction(tx),
     result: result,
   }, null, 2));
 }

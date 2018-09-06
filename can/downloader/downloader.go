@@ -341,7 +341,7 @@ func (d *Downloader) syncWithPeer(p *peerConnection, hash common.Hash, td *big.I
 		return errTooOld
 	}
 
-	log4j.Debug("Synchronising with the network", "peer", p.id, "eth", p.version, "head", hash, "td", td, "mode", d.mode)
+	log4j.Debug("Synchronising with the network", "peer", p.id, "can", p.version, "head", hash, "td", td, "mode", d.mode)
 	defer func(start time.Time) {
 		log4j.Debug("Synchronisation terminated", "elapsed", time.Since(start))
 	}(time.Now())

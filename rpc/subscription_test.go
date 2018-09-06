@@ -85,7 +85,7 @@ func TestNotifications(t *testing.T) {
 	server := NewServer()
 	service := &NotificationTestService{}
 
-	if err := server.RegisterName("eth", service); err != nil {
+	if err := server.RegisterName("can", service); err != nil {
 		t.Fatalf("unable to register test service %v", err)
 	}
 
@@ -100,7 +100,7 @@ func TestNotifications(t *testing.T) {
 	val := 12345
 	request := map[string]interface{}{
 		"id":      1,
-		"method":  "eth_subscribe",
+		"method":  "can_subscribe",
 		"version": "2.0",
 		"params":  []interface{}{"someSubscription", n, val},
 	}
@@ -197,7 +197,7 @@ func waitForMessages(t *testing.T, in *json.Decoder, successes chan<- jsonSucces
 
 func TestSubscriptionMultipleNamespaces(t *testing.T) {
 	var (
-		namespaces             = []string{"eth", "shh", "bzz"}
+		namespaces             = []string{"can", "shh", "bzz"}
 		server                 = NewServer()
 		service                = NotificationTestService{}
 		clientConn, serverConn = net.Pipe()

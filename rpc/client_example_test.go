@@ -43,7 +43,7 @@ func subscribeBlocks(client *rpc.Client, subch chan Block) {
 	}
 
 	var lastBlock Block
-	if err := client.CallContext(ctx, &lastBlock, "eth_getBlockByNumber", "latest"); err != nil {
+	if err := client.CallContext(ctx, &lastBlock, "can_getBlockByNumber", "latest"); err != nil {
 		fmt.Println("can't get latest block:", err)
 		return
 	}

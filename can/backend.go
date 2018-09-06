@@ -80,7 +80,7 @@ func (s *CANChain) AddLcsServer(ls LcsServer) {
 
 func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 	if config.SyncMode == downloader.LightSync {
-		return nil, errors.New("can't run eth.CANChain in light sync mode, use les.LightEthereum")
+		return nil, errors.New("can't run can.CANChain in light sync mode, use les.LightEthereum")
 	}
 	if !config.SyncMode.IsValid() {
 		return nil, fmt.Errorf("invalid sync mode %d", config.SyncMode)
@@ -182,7 +182,7 @@ func CreateDB(ctx *node.ServiceContext, config *Config, name string) (candb.Data
 		return nil, err
 	}
 	if db, ok := db.(*candb.LDBDatabase); ok {
-		db.Meter("eth/db/chaindata/")
+		db.Meter("can/db/chaindata/")
 	}
 	return db, nil
 }
@@ -222,17 +222,17 @@ func (s *CANChain) APIs() []rpc.API {
 
 	return append(apis, []rpc.API{
 		{
-			Namespace: "eth",
+			Namespace: "can",
 			Version:   "1.0",
 			Service:   NewPublicEthereumAPI(s),
 			Public:    true,
 		}, {
-			Namespace: "eth",
+			Namespace: "can",
 			Version:   "1.0",
 			Service:   NewPublicMinerAPI(s),
 			Public:    true,
 		}, {
-			Namespace: "eth",
+			Namespace: "can",
 			Version:   "1.0",
 			Service:   downloader.NewPublicDownloaderAPI(s.protocolManager.downloader, s.eventMux),
 			Public:    true,
@@ -242,7 +242,7 @@ func (s *CANChain) APIs() []rpc.API {
 			Service:   NewPrivateMinerAPI(s),
 			Public:    false,
 		}, {
-			Namespace: "eth",
+			Namespace: "can",
 			Version:   "1.0",
 			Service:   filters.NewPublicFilterAPI(s.APIBackend, false),
 			Public:    true,

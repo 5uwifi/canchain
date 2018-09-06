@@ -178,7 +178,7 @@ func TestClientSubscribeInvalidArg(t *testing.T) {
 }
 
 func TestClientSubscribe(t *testing.T) {
-	server := newTestServer("eth", new(NotificationTestService))
+	server := newTestServer("can", new(NotificationTestService))
 	defer server.Stop()
 	client := DialInProc(server)
 	defer client.Close()
@@ -245,7 +245,7 @@ func TestClientSubscribeClose(t *testing.T) {
 		gotHangSubscriptionReq:  make(chan struct{}),
 		unblockHangSubscription: make(chan struct{}),
 	}
-	server := newTestServer("eth", service)
+	server := newTestServer("can", service)
 	defer server.Stop()
 	client := DialInProc(server)
 	defer client.Close()
@@ -279,7 +279,7 @@ func TestClientSubscribeClose(t *testing.T) {
 }
 
 func TestClientNotificationStorm(t *testing.T) {
-	server := newTestServer("eth", new(NotificationTestService))
+	server := newTestServer("can", new(NotificationTestService))
 	defer server.Stop()
 
 	doTest := func(count int, wantError bool) {
@@ -310,7 +310,7 @@ func TestClientNotificationStorm(t *testing.T) {
 				return
 			}
 			var r int
-			err := client.CallContext(ctx, &r, "eth_echo", i)
+			err := client.CallContext(ctx, &r, "can_echo", i)
 			if err != nil {
 				if !wantError {
 					t.Fatalf("(%d/%d) call error: %v", i, count, err)

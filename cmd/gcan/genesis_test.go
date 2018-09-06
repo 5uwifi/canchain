@@ -24,7 +24,7 @@ var customGenesisTests = []struct {
 			"parentHash" : "0x0000000000000000000000000000000000000000000000000000000000000000",
 			"timestamp"  : "0x00"
 		}`,
-		query:  "eth.getBlock(0).nonce",
+		query:  "can.getBlock(0).nonce",
 		result: "0x0000000000000000",
 	},
 	{
@@ -40,7 +40,7 @@ var customGenesisTests = []struct {
 			"timestamp"  : "0x00",
 			"config"     : {}
 		}`,
-		query:  "eth.getBlock(0).nonce",
+		query:  "can.getBlock(0).nonce",
 		result: "0x0000000000000042",
 	},
 	{
@@ -60,7 +60,7 @@ var customGenesisTests = []struct {
 				"daoForkSupport" : true
 			}
 		}`,
-		query:  "eth.getBlock(0).nonce",
+		query:  "can.getBlock(0).nonce",
 		result: "0x0000000000000042",
 	},
 }

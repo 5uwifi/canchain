@@ -55,11 +55,14 @@ func (peer *Peer) stop() {
 
 func (peer *Peer) handshake() error {
 	errc := make(chan error, 1)
+	isLightNode := peer.host.LightClientMode()
+	isRestrictedLightNodeConnection := peer.host.LightClientModeConnectionRestricted()
 	go func() {
 		pow := peer.host.MinPow()
 		powConverted := math.Float64bits(pow)
 		bloom := peer.host.BloomFilter()
-		errc <- p2p.SendItems(peer.ws, statusCode, ProtocolVersion, powConverted, bloom)
+
+		errc <- p2p.SendItems(peer.ws, statusCode, ProtocolVersion, powConverted, bloom, isLightNode)
 	}()
 
 	packet, err := peer.ws.ReadMsg()
@@ -99,6 +102,11 @@ func (peer *Peer) handshake() error {
 			}
 			peer.setBloomFilter(bloom)
 		}
+	}
+
+	isRemotePeerLightNode, err := s.Bool()
+	if isRemotePeerLightNode && isLightNode && isRestrictedLightNodeConnection {
+		return fmt.Errorf("peer [%x] is useless: two light client communication restricted", peer.ID())
 	}
 
 	if err := <-errc; err != nil {

@@ -314,7 +314,7 @@ func (p *peer) readStatus(network uint64, status *statusData, genesis common.Has
 
 func (p *peer) String() string {
 	return fmt.Sprintf("Peer %s [%s]", p.id,
-		fmt.Sprintf("eth/%2d", p.version),
+		fmt.Sprintf("can/%2d", p.version),
 	)
 }
 

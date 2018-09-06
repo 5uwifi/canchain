@@ -145,13 +145,13 @@ func (api *PublicWhisperAPI) DeleteSymKey(ctx context.Context, id string) bool {
 }
 
 func (api *PublicWhisperAPI) MakeLightClient(ctx context.Context) bool {
-	api.w.lightClient = true
-	return api.w.lightClient
+	api.w.SetLightClientMode(true)
+	return api.w.LightClientMode()
 }
 
 func (api *PublicWhisperAPI) CancelLightClient(ctx context.Context) bool {
-	api.w.lightClient = false
-	return !api.w.lightClient
+	api.w.SetLightClientMode(false)
+	return !api.w.LightClientMode()
 }
 
 //go:generate gencodec -type NewMessage -field-override newMessageOverride -out gen_newmessage_json.go

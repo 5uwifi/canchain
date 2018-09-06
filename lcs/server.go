@@ -32,25 +32,25 @@ type LcsServer struct {
 	quitSync    chan struct{}
 }
 
-func NewLcsServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
+func NewLcsServer(can *can.CANChain, config *can.Config) (*LcsServer, error) {
 	quitSync := make(chan struct{})
-	pm, err := NewProtocolManager(eth.BlockChain().Config(), light.DefaultServerIndexerConfig, false, config.NetworkId, eth.EventMux(), eth.Engine(), newPeerSet(), eth.BlockChain(), eth.TxPool(), eth.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
+	pm, err := NewProtocolManager(can.BlockChain().Config(), light.DefaultServerIndexerConfig, false, config.NetworkId, can.EventMux(), can.Engine(), newPeerSet(), can.BlockChain(), can.TxPool(), can.ChainDb(), nil, nil, nil, quitSync, new(sync.WaitGroup))
 	if err != nil {
 		return nil, err
 	}
 
 	lcsTopics := make([]discv5.Topic, len(AdvertiseProtocolVersions))
 	for i, pv := range AdvertiseProtocolVersions {
-		lcsTopics[i] = lcsTopic(eth.BlockChain().Genesis().Hash(), pv)
+		lcsTopics[i] = lcsTopic(can.BlockChain().Genesis().Hash(), pv)
 	}
 
 	srv := &LcsServer{
 		lcsCommons: lcsCommons{
 			config:           config,
-			chainDb:          eth.ChainDb(),
+			chainDb:          can.ChainDb(),
 			iConfig:          light.DefaultServerIndexerConfig,
-			chtIndexer:       light.NewChtIndexer(eth.ChainDb(), nil, params.CHTFrequencyServer, params.HelperTrieProcessConfirmations),
-			bloomTrieIndexer: light.NewBloomTrieIndexer(eth.ChainDb(), nil, params.BloomBitsBlocks, params.BloomTrieFrequency),
+			chtIndexer:       light.NewChtIndexer(can.ChainDb(), nil, params.CHTFrequencyServer, params.HelperTrieProcessConfirmations),
+			bloomTrieIndexer: light.NewBloomTrieIndexer(can.ChainDb(), nil, params.BloomBitsBlocks, params.BloomTrieFrequency),
 			protocolManager:  pm,
 		},
 		quitSync:  quitSync,
@@ -76,7 +76,7 @@ func NewLcsServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 		logger.Info("Loaded bloom trie", "section", bloomTrieLastSection, "head", bloomTrieSectionHead, "root", bloomTrieRoot)
 	}
 
-	srv.chtIndexer.Start(eth.BlockChain())
+	srv.chtIndexer.Start(can.BlockChain())
 	pm.server = srv
 
 	srv.defParams = &flowcontrol.ServerParams{
@@ -84,7 +84,7 @@ func NewLcsServer(eth *can.CANChain, config *can.Config) (*LcsServer, error) {
 		MinRecharge: 50000,
 	}
 	srv.fcManager = flowcontrol.NewClientManager(uint64(config.LightServ), 10, 1000000000)
-	srv.fcCostStats = newCostStats(eth.ChainDb())
+	srv.fcCostStats = newCostStats(can.ChainDb())
 	return srv, nil
 }
 

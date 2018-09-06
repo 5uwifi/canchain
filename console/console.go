@@ -105,7 +105,7 @@ func (c *Console) init(preload []string) error {
 	if err != nil {
 		return fmt.Errorf("api modules: %v", err)
 	}
-	flatten := "var eth = web3.eth; var personal = web3.personal; "
+	flatten := "var can = web3.can; var personal = web3.personal; "
 	for api := range apis {
 		if api == "web3" {
 			continue
@@ -219,8 +219,8 @@ func (c *Console) Welcome() {
 	fmt.Fprintf(c.printer, "Welcome to the Gcan JavaScript console!\n\n")
 	c.jsre.Run(`
 		console.log("instance: " + web3.version.node);
-		console.log("coinbase: " + eth.coinbase);
-		console.log("at block: " + eth.blockNumber + " (" + new Date(1000 * eth.getBlock(eth.blockNumber).timestamp) + ")");
+		console.log("coinbase: " + can.coinbase);
+		console.log("at block: " + can.blockNumber + " (" + new Date(1000 * can.getBlock(can.blockNumber).timestamp) + ")");
 		console.log(" datadir: " + admin.datadir);
 	`)
 	if apis, err := c.client.SupportedModules(); err == nil {

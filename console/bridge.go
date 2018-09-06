@@ -196,7 +196,7 @@ func (b *bridge) SleepBlocks(call otto.FunctionCall) (response otto.Value) {
 		}
 	}
 	blockNumber := func() int64 {
-		result, err := call.Otto.Run("eth.blockNumber")
+		result, err := call.Otto.Run("can.blockNumber")
 		if err != nil {
 			throwJSException(err.Error())
 		}
