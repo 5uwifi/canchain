@@ -17,10 +17,8 @@ type Config struct {
 }
 
 type Interpreter interface {
-	Run(contract *Contract, input []byte) ([]byte, error)
+	Run(contract *Contract, input []byte, static bool) ([]byte, error)
 	CanRun([]byte) bool
-	IsReadOnly() bool
-	SetReadOnly(bool)
 }
 
 type EVMInterpreter struct {
@@ -65,7 +63,7 @@ func (in *EVMInterpreter) enforceRestrictions(op OpCode, operation operation, st
 	return nil
 }
 
-func (in *EVMInterpreter) Run(contract *Contract, input []byte) (ret []byte, err error) {
+func (in *EVMInterpreter) Run(contract *Contract, input []byte, readOnly bool) (ret []byte, err error) {
 	if in.intPool == nil {
 		in.intPool = poolOfIntPools.get()
 		defer func() {
@@ -76,6 +74,11 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte) (ret []byte, err
 
 	in.evm.depth++
 	defer func() { in.evm.depth-- }()
+
+	if readOnly && !in.readOnly {
+		in.readOnly = true
+		defer func() { in.readOnly = false }()
+	}
 
 	in.returnData = nil
 
@@ -172,12 +175,4 @@ func (in *EVMInterpreter) Run(contract *Contract, input []byte) (ret []byte, err
 
 func (in *EVMInterpreter) CanRun(code []byte) bool {
 	return true
-}
-
-func (in *EVMInterpreter) IsReadOnly() bool {
-	return in.readOnly
-}
-
-func (in *EVMInterpreter) SetReadOnly(ro bool) {
-	in.readOnly = ro
 }
