@@ -284,7 +284,7 @@ func (c *Clique) snapshot(chain consensus.ChainReader, number uint64, hash commo
 				break
 			}
 		}
-		if number%c.config.Epoch == 0 {
+		if number == 0 || (number%c.config.Epoch == 0 && chain.GetHeaderByNumber(number-1) == nil) {
 			checkpoint := chain.GetHeaderByNumber(number)
 			if checkpoint != nil {
 				hash := checkpoint.Hash()

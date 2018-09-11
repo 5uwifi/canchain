@@ -291,12 +291,12 @@ var (
 	}
 	MinerGasPriceFlag = BigFlag{
 		Name:  "miner.gasprice",
-		Usage: "Minimal gas price for mining a transactions",
+		Usage: "Minimum gas price for mining a transaction",
 		Value: can.DefaultConfig.MinerGasPrice,
 	}
 	MinerLegacyGasPriceFlag = BigFlag{
 		Name:  "gasprice",
-		Usage: "Minimal gas price for mining a transactions (deprecated, use --miner.gasprice)",
+		Usage: "Minimum gas price for mining a transaction (deprecated, use --miner.gasprice)",
 		Value: can.DefaultConfig.MinerGasPrice,
 	}
 	MinerCanerbaseFlag = cli.StringFlag{
