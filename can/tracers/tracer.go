@@ -86,7 +86,7 @@ func (mw *memoryWrapper) pushObject(vm *duktape.Context) {
 		ctx.Pop2()
 
 		ptr := ctx.PushFixedBuffer(len(blob))
-		copy(makeSlice(ptr, uint(len(blob))), blob[:])
+		copy(makeSlice(ptr, uint(len(blob))), blob)
 		return 1
 	})
 	vm.PutPropString(obj, "slice")
@@ -152,7 +152,7 @@ func (dw *dbWrapper) pushObject(vm *duktape.Context) {
 		code := dw.db.GetCode(common.BytesToAddress(popSlice(ctx)))
 
 		ptr := ctx.PushFixedBuffer(len(code))
-		copy(makeSlice(ptr, uint(len(code))), code[:])
+		copy(makeSlice(ptr, uint(len(code))), code)
 		return 1
 	})
 	vm.PutPropString(obj, "getCode")
@@ -207,7 +207,7 @@ func (cw *contractWrapper) pushObject(vm *duktape.Context) {
 		blob := cw.contract.Input
 
 		ptr := ctx.PushFixedBuffer(len(blob))
-		copy(makeSlice(ptr, uint(len(blob))), blob[:])
+		copy(makeSlice(ptr, uint(len(blob))), blob)
 		return 1
 	})
 	vm.PutPropString(obj, "getInput")
@@ -496,7 +496,7 @@ func (jst *Tracer) GetResult() (json.RawMessage, error) {
 
 		case []byte:
 			ptr := jst.vm.PushFixedBuffer(len(val))
-			copy(makeSlice(ptr, uint(len(val))), val[:])
+			copy(makeSlice(ptr, uint(len(val))), val)
 
 		case common.Address:
 			ptr := jst.vm.PushFixedBuffer(20)

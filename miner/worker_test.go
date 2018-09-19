@@ -139,6 +139,7 @@ func testPendingStateAndBlock(t *testing.T, chainConfig *params.ChainConfig, eng
 		t.Errorf("account balance mismatch: have %d, want %d", balance, 1000)
 	}
 	b.txPool.AddLocals(newTxs)
+
 	time.Sleep(100 * time.Millisecond)
 	block, state = w.pending()
 	if balance := state.GetBalance(testUserAddress); balance.Cmp(big.NewInt(2000)) != 0 {

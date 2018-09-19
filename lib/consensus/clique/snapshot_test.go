@@ -3,23 +3,17 @@ package clique
 import (
 	"bytes"
 	"crypto/ecdsa"
-	"math/big"
+	"sort"
 	"testing"
 
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel"
-	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/kernel/vm"
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/params"
 )
-
-type testerVote struct {
-	signer string
-	voted  string
-	auth   bool
-}
 
 type testerAccountPool struct {
 	accounts map[string]*ecdsa.PrivateKey
@@ -31,43 +25,50 @@ func newTesterAccountPool() *testerAccountPool {
 	}
 }
 
-func (ap *testerAccountPool) sign(header *types.Header, signer string) {
-	if ap.accounts[signer] == nil {
-		ap.accounts[signer], _ = crypto.GenerateKey()
+func (ap *testerAccountPool) checkpoint(header *types.Header, signers []string) {
+	auths := make([]common.Address, len(signers))
+	for i, signer := range signers {
+		auths[i] = ap.address(signer)
 	}
-	sig, _ := crypto.Sign(sigHash(header).Bytes(), ap.accounts[signer])
-	copy(header.Extra[len(header.Extra)-65:], sig)
+	sort.Sort(signersAscending(auths))
+	for i, auth := range auths {
+		copy(header.Extra[extraVanity+i*common.AddressLength:], auth.Bytes())
+	}
 }
 
 func (ap *testerAccountPool) address(account string) common.Address {
+	if account == "" {
+		return common.Address{}
+	}
 	if ap.accounts[account] == nil {
 		ap.accounts[account], _ = crypto.GenerateKey()
 	}
 	return crypto.PubkeyToAddress(ap.accounts[account].PublicKey)
 }
 
-type testerChainReader struct {
-	db candb.Database
-}
-
-func (r *testerChainReader) Config() *params.ChainConfig                 { return params.AllCliqueProtocolChanges }
-func (r *testerChainReader) CurrentHeader() *types.Header                { panic("not supported") }
-func (r *testerChainReader) GetHeader(common.Hash, uint64) *types.Header { panic("not supported") }
-func (r *testerChainReader) GetBlock(common.Hash, uint64) *types.Block   { panic("not supported") }
-func (r *testerChainReader) GetHeaderByHash(common.Hash) *types.Header   { panic("not supported") }
-func (r *testerChainReader) GetHeaderByNumber(number uint64) *types.Header {
-	if number == 0 {
-		return rawdb.ReadHeader(r.db, rawdb.ReadCanonicalHash(r.db, 0), 0)
+func (ap *testerAccountPool) sign(header *types.Header, signer string) {
+	if ap.accounts[signer] == nil {
+		ap.accounts[signer], _ = crypto.GenerateKey()
 	}
-	return nil
+	sig, _ := crypto.Sign(sigHash(header).Bytes(), ap.accounts[signer])
+	copy(header.Extra[len(header.Extra)-extraSeal:], sig)
 }
 
-func TestVoting(t *testing.T) {
+type testerVote struct {
+	signer     string
+	voted      string
+	auth       bool
+	checkpoint []string
+	newbatch   bool
+}
+
+func TestClique(t *testing.T) {
 	tests := []struct {
 		epoch   uint64
 		signers []string
 		votes   []testerVote
 		results []string
+		failure error
 	}{
 		{
 			signers: []string{"A"},
@@ -271,10 +272,43 @@ func TestVoting(t *testing.T) {
 			votes: []testerVote{
 				{signer: "A", voted: "C", auth: true},
 				{signer: "B"},
-				{signer: "A"},
+				{signer: "A", checkpoint: []string{"A", "B"}},
 				{signer: "B", voted: "C", auth: true},
 			},
 			results: []string{"A", "B"},
+		}, {
+			signers: []string{"A"},
+			votes: []testerVote{
+				{signer: "B"},
+			},
+			failure: errUnauthorizedSigner,
+		}, {
+			signers: []string{"A", "B"},
+			votes: []testerVote{
+				{signer: "A"},
+				{signer: "A"},
+			},
+			failure: errRecentlySigned,
+		}, {
+			epoch:   3,
+			signers: []string{"A", "B", "C"},
+			votes: []testerVote{
+				{signer: "A"},
+				{signer: "B"},
+				{signer: "A", checkpoint: []string{"A", "B", "C"}},
+				{signer: "A"},
+			},
+			failure: errRecentlySigned,
+		}, {
+			epoch:   3,
+			signers: []string{"A", "B", "C"},
+			votes: []testerVote{
+				{signer: "A"},
+				{signer: "B"},
+				{signer: "A", checkpoint: []string{"A", "B", "C"}},
+				{signer: "A", newbatch: true},
+			},
+			failure: errRecentlySigned,
 		},
 	}
 	for i, tt := range tests {
@@ -300,27 +334,71 @@ func TestVoting(t *testing.T) {
 		db := candb.NewMemDatabase()
 		genesis.Commit(db)
 
-		headers := make([]*types.Header, len(tt.votes))
-		for j, vote := range tt.votes {
-			headers[j] = &types.Header{
-				Number:   big.NewInt(int64(j) + 1),
-				Time:     big.NewInt(int64(j) * 15),
-				Coinbase: accounts.address(vote.voted),
-				Extra:    make([]byte, extraVanity+extraSeal),
-			}
-			if j > 0 {
-				headers[j].ParentHash = headers[j-1].Hash()
-			}
-			if vote.auth {
-				copy(headers[j].Nonce[:], nonceAuthVote)
-			}
-			accounts.sign(headers[j], vote.signer)
+		config := *params.TestChainConfig
+		config.Clique = &params.CliqueConfig{
+			Period: 1,
+			Epoch:  tt.epoch,
 		}
-		head := headers[len(headers)-1]
+		engine := New(config.Clique, db)
+		engine.fakeDiff = true
 
-		snap, err := New(&params.CliqueConfig{Epoch: tt.epoch}, db).snapshot(&testerChainReader{db: db}, head.Number.Uint64(), head.Hash(), headers)
+		blocks, _ := kernel.GenerateChain(&config, genesis.ToBlock(db), engine, db, len(tt.votes), func(j int, gen *kernel.BlockGen) {
+			gen.SetCoinbase(accounts.address(tt.votes[j].voted))
+			if tt.votes[j].auth {
+				var nonce types.BlockNonce
+				copy(nonce[:], nonceAuthVote)
+				gen.SetNonce(nonce)
+			}
+		})
+		for j, block := range blocks {
+			header := block.Header()
+			if j > 0 {
+				header.ParentHash = blocks[j-1].Hash()
+			}
+			header.Extra = make([]byte, extraVanity+extraSeal)
+			if auths := tt.votes[j].checkpoint; auths != nil {
+				header.Extra = make([]byte, extraVanity+len(auths)*common.AddressLength+extraSeal)
+				accounts.checkpoint(header, auths)
+			}
+			header.Difficulty = diffInTurn
+
+			accounts.sign(header, tt.votes[j].signer)
+			blocks[j] = block.WithSeal(header)
+		}
+		batches := [][]*types.Block{nil}
+		for j, block := range blocks {
+			if tt.votes[j].newbatch {
+				batches = append(batches, nil)
+			}
+			batches[len(batches)-1] = append(batches[len(batches)-1], block)
+		}
+		chain, err := kernel.NewBlockChain(db, nil, &config, engine, vm.Config{})
 		if err != nil {
-			t.Errorf("test %d: failed to create voting snapshot: %v", i, err)
+			t.Errorf("test %d: failed to create test chain: %v", i, err)
+			continue
+		}
+		failed := false
+		for j := 0; j < len(batches)-1; j++ {
+			if k, err := chain.InsertChain(batches[j]); err != nil {
+				t.Errorf("test %d: failed to import batch %d, block %d: %v", i, j, k, err)
+				failed = true
+				break
+			}
+		}
+		if failed {
+			continue
+		}
+		if _, err = chain.InsertChain(batches[len(batches)-1]); err != tt.failure {
+			t.Errorf("test %d: failure mismatch: have %v, want %v", i, err, tt.failure)
+		}
+		if tt.failure != nil {
+			continue
+		}
+		head := blocks[len(blocks)-1]
+
+		snap, err := engine.snapshot(chain, head.NumberU64(), head.Hash(), nil)
+		if err != nil {
+			t.Errorf("test %d: failed to retrieve voting snapshot: %v", i, err)
 			continue
 		}
 		signers = make([]common.Address, len(tt.results))

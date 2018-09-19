@@ -21,10 +21,15 @@ import (
 )
 
 var (
-	FrontierBlockReward    = big.NewInt(5e+18)
-	ByzantiumBlockReward   = big.NewInt(3e+18)
-	maxUncles              = 2
-	allowedFutureBlockTime = 15 * time.Second
+	FrontierBlockReward       = big.NewInt(5e+18)
+	ByzantiumBlockReward      = big.NewInt(3e+18)
+	ConstantinopleBlockReward = big.NewInt(2e+18)
+	maxUncles                 = 2
+	allowedFutureBlockTime    = 15 * time.Second
+
+	calcDifficultyConstantinople = makeDifficultyCalculator(big.NewInt(5000000))
+
+	calcDifficultyByzantium = makeDifficultyCalculator(big.NewInt(3000000))
 )
 
 var (
@@ -238,6 +243,8 @@ func (ethash *Ethash) CalcDifficulty(chain consensus.ChainReader, time uint64, p
 func CalcDifficulty(config *params.ChainConfig, time uint64, parent *types.Header) *big.Int {
 	next := new(big.Int).Add(parent.Number, big1)
 	switch {
+	case config.IsConstantinople(next):
+		return calcDifficultyConstantinople(time, parent)
 	case config.IsByzantium(next):
 		return calcDifficultyByzantium(time, parent)
 	case config.IsHomestead(next):
@@ -254,47 +261,49 @@ var (
 	big9          = big.NewInt(9)
 	big10         = big.NewInt(10)
 	bigMinus99    = big.NewInt(-99)
-	big2999999    = big.NewInt(2999999)
 )
 
-func calcDifficultyByzantium(time uint64, parent *types.Header) *big.Int {
+func makeDifficultyCalculator(bombDelay *big.Int) func(time uint64, parent *types.Header) *big.Int {
+	bombDelayFromParent := new(big.Int).Sub(bombDelay, big1)
+	return func(time uint64, parent *types.Header) *big.Int {
 
-	bigTime := new(big.Int).SetUint64(time)
-	bigParentTime := new(big.Int).Set(parent.Time)
+		bigTime := new(big.Int).SetUint64(time)
+		bigParentTime := new(big.Int).Set(parent.Time)
 
-	x := new(big.Int)
-	y := new(big.Int)
+		x := new(big.Int)
+		y := new(big.Int)
 
-	x.Sub(bigTime, bigParentTime)
-	x.Div(x, big9)
-	if parent.UncleHash == types.EmptyUncleHash {
-		x.Sub(big1, x)
-	} else {
-		x.Sub(big2, x)
-	}
-	if x.Cmp(bigMinus99) < 0 {
-		x.Set(bigMinus99)
-	}
-	y.Div(parent.Difficulty, params.DifficultyBoundDivisor)
-	x.Mul(y, x)
-	x.Add(parent.Difficulty, x)
+		x.Sub(bigTime, bigParentTime)
+		x.Div(x, big9)
+		if parent.UncleHash == types.EmptyUncleHash {
+			x.Sub(big1, x)
+		} else {
+			x.Sub(big2, x)
+		}
+		if x.Cmp(bigMinus99) < 0 {
+			x.Set(bigMinus99)
+		}
+		y.Div(parent.Difficulty, params.DifficultyBoundDivisor)
+		x.Mul(y, x)
+		x.Add(parent.Difficulty, x)
 
-	if x.Cmp(params.MinimumDifficulty) < 0 {
-		x.Set(params.MinimumDifficulty)
-	}
-	fakeBlockNumber := new(big.Int)
-	if parent.Number.Cmp(big2999999) >= 0 {
-		fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, big2999999)
-	}
-	periodCount := fakeBlockNumber
-	periodCount.Div(periodCount, expDiffPeriod)
+		if x.Cmp(params.MinimumDifficulty) < 0 {
+			x.Set(params.MinimumDifficulty)
+		}
+		fakeBlockNumber := new(big.Int)
+		if parent.Number.Cmp(bombDelayFromParent) >= 0 {
+			fakeBlockNumber = fakeBlockNumber.Sub(parent.Number, bombDelayFromParent)
+		}
+		periodCount := fakeBlockNumber
+		periodCount.Div(periodCount, expDiffPeriod)
 
-	if periodCount.Cmp(big1) > 0 {
-		y.Sub(periodCount, big2)
-		y.Exp(big2, y, nil)
-		x.Add(x, y)
+		if periodCount.Cmp(big1) > 0 {
+			y.Sub(periodCount, big2)
+			y.Exp(big2, y, nil)
+			x.Add(x, y)
+		}
+		return x
 	}
-	return x
 }
 
 func calcDifficultyHomestead(time uint64, parent *types.Header) *big.Int {
@@ -461,6 +470,9 @@ func accumulateRewards(config *params.ChainConfig, state *state.StateDB, header 
 	blockReward := FrontierBlockReward
 	if config.IsByzantium(header.Number) {
 		blockReward = ByzantiumBlockReward
+	}
+	if config.IsConstantinople(header.Number) {
+		blockReward = ConstantinopleBlockReward
 	}
 	reward := new(big.Int).Set(blockReward)
 	r := new(big.Int)

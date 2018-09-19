@@ -205,7 +205,7 @@ func initializeSecrets(c *cli.Context) error {
 	if _, err := os.Stat(location); err == nil {
 		return fmt.Errorf("file %v already exists, will not overwrite", location)
 	}
-	err = ioutil.WriteFile(location, masterSeed, 0700)
+	err = ioutil.WriteFile(location, masterSeed, 0400)
 	if err != nil {
 		return err
 	}
@@ -503,7 +503,7 @@ func checkFile(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed stat on %s: %v", filename, err)
 	}
-	if info.Mode().Perm()&077 != 0 {
+	if info.Mode().Perm()&0377 != 0 {
 		return fmt.Errorf("file (%v) has insecure file permissions (%v)", filename, info.Mode().String())
 	}
 	return nil

@@ -59,11 +59,13 @@ var (
 
 	errMissingVanity = errors.New("extra-data 32 byte vanity prefix missing")
 
-	errMissingSignature = errors.New("extra-data 65 byte suffix signature missing")
+	errMissingSignature = errors.New("extra-data 65 byte signature suffix missing")
 
 	errExtraSigners = errors.New("non-checkpoint block contains extra signer list")
 
 	errInvalidCheckpointSigners = errors.New("invalid signer list on checkpoint block")
+
+	errMismatchingCheckpointSigners = errors.New("mismatching signer list on checkpoint block")
 
 	errInvalidMixDigest = errors.New("non-zero mix digest")
 
@@ -71,11 +73,15 @@ var (
 
 	errInvalidDifficulty = errors.New("invalid difficulty")
 
+	errWrongDifficulty = errors.New("wrong difficulty")
+
 	ErrInvalidTimestamp = errors.New("invalid timestamp")
 
 	errInvalidVotingChain = errors.New("invalid voting chain")
 
-	errUnauthorized = errors.New("unauthorized")
+	errUnauthorizedSigner = errors.New("unauthorized signer")
+
+	errRecentlySigned = errors.New("recently signed")
 
 	errWaitTransactions = errors.New("waiting for transactions")
 )
@@ -139,6 +145,8 @@ type Clique struct {
 	signer common.Address
 	signFn SignerFn
 	lock   sync.RWMutex
+
+	fakeDiff bool
 }
 
 func New(config *params.CliqueConfig, db candb.Database) *Clique {
@@ -261,7 +269,7 @@ func (c *Clique) verifyCascadingFields(chain consensus.ChainReader, header *type
 		}
 		extraSuffix := len(header.Extra) - extraSeal
 		if !bytes.Equal(header.Extra[extraVanity:extraSuffix], signers) {
-			return errInvalidCheckpointSigners
+			return errMismatchingCheckpointSigners
 		}
 	}
 	return c.verifySeal(chain, header, parents)
@@ -361,21 +369,23 @@ func (c *Clique) verifySeal(chain consensus.ChainReader, header *types.Header, p
 		return err
 	}
 	if _, ok := snap.Signers[signer]; !ok {
-		return errUnauthorized
+		return errUnauthorizedSigner
 	}
 	for seen, recent := range snap.Recents {
 		if recent == signer {
 			if limit := uint64(len(snap.Signers)/2 + 1); seen > number-limit {
-				return errUnauthorized
+				return errRecentlySigned
 			}
 		}
 	}
-	inturn := snap.inturn(header.Number.Uint64(), signer)
-	if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
-		return errInvalidDifficulty
-	}
-	if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
-		return errInvalidDifficulty
+	if !c.fakeDiff {
+		inturn := snap.inturn(header.Number.Uint64(), signer)
+		if inturn && header.Difficulty.Cmp(diffInTurn) != 0 {
+			return errWrongDifficulty
+		}
+		if !inturn && header.Difficulty.Cmp(diffNoTurn) != 0 {
+			return errWrongDifficulty
+		}
 	}
 	return nil
 }
@@ -469,7 +479,7 @@ func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, results c
 		return err
 	}
 	if _, authorized := snap.Signers[signer]; !authorized {
-		return errUnauthorized
+		return errUnauthorizedSigner
 	}
 	for seen, recent := range snap.Recents {
 		if recent == signer {

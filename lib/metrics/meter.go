@@ -23,6 +23,13 @@ func GetOrRegisterMeter(name string, r Registry) Meter {
 	return r.GetOrRegister(name, NewMeter).(Meter)
 }
 
+func GetOrRegisterMeterForced(name string, r Registry) Meter {
+	if nil == r {
+		r = DefaultRegistry
+	}
+	return r.GetOrRegister(name, NewMeterForced).(Meter)
+}
+
 func NewMeter() Meter {
 	if !Enabled {
 		return NilMeter{}
@@ -38,8 +45,29 @@ func NewMeter() Meter {
 	return m
 }
 
+func NewMeterForced() Meter {
+	m := newStandardMeter()
+	arbiter.Lock()
+	defer arbiter.Unlock()
+	arbiter.meters[m] = struct{}{}
+	if !arbiter.started {
+		arbiter.started = true
+		go arbiter.tick()
+	}
+	return m
+}
+
 func NewRegisteredMeter(name string, r Registry) Meter {
 	c := NewMeter()
+	if nil == r {
+		r = DefaultRegistry
+	}
+	r.Register(name, c)
+	return c
+}
+
+func NewRegisteredMeterForced(name string, r Registry) Meter {
+	c := NewMeterForced()
 	if nil == r {
 		r = DefaultRegistry
 	}

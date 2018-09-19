@@ -46,6 +46,10 @@ func (b *BlockGen) SetExtra(data []byte) {
 	b.header.Extra = data
 }
 
+func (b *BlockGen) SetNonce(nonce types.BlockNonce) {
+	b.header.Nonce = nonce
+}
+
 func (b *BlockGen) AddTx(tx *types.Transaction) {
 	b.AddTxWithChain(nil, tx)
 }
@@ -126,9 +130,9 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 		if gen != nil {
 			gen(i, b)
 		}
-
 		if b.engine != nil {
 			block, _ := b.engine.Finalize(b.chainReader, b.header, statedb, b.txs, b.uncles, b.receipts)
+
 			root, err := statedb.Commit(config.IsEIP158(b.header.Number))
 			if err != nil {
 				panic(fmt.Sprintf("state write error: %v", err))
