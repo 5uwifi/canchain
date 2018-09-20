@@ -74,7 +74,12 @@ func NewType(t string) (typ Type, err error) {
 		}
 		return typ, err
 	}
-	parsedType := typeRegex.FindAllStringSubmatch(t, -1)[0]
+	matches := typeRegex.FindAllStringSubmatch(t, -1)
+	if len(matches) == 0 {
+		return Type{}, fmt.Errorf("invalid type '%v'", t)
+	}
+	parsedType := matches[0]
+
 	var varSize int
 	if len(parsedType[3]) > 0 {
 		var err error

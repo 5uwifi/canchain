@@ -82,8 +82,6 @@ var (
 	errUnauthorizedSigner = errors.New("unauthorized signer")
 
 	errRecentlySigned = errors.New("recently signed")
-
-	errWaitTransactions = errors.New("waiting for transactions")
 )
 
 type SignerFn func(accounts.Account, []byte) ([]byte, error)
@@ -468,7 +466,8 @@ func (c *Clique) Seal(chain consensus.ChainReader, block *types.Block, results c
 		return errUnknownBlock
 	}
 	if c.config.Period == 0 && len(block.Transactions()) == 0 {
-		return errWaitTransactions
+		log4j.Info("Sealing paused, waiting for transactions")
+		return nil
 	}
 	c.lock.RLock()
 	signer, signFn := c.signer, c.signFn
