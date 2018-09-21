@@ -78,10 +78,14 @@ func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmCon
 		vmConfig:     vmConfig,
 		chainConfig:  chainConfig,
 		chainRules:   chainConfig.Rules(ctx.BlockNumber),
-		interpreters: make([]Interpreter, 1),
+		interpreters: make([]Interpreter, 0, 1),
 	}
 
-	evm.interpreters[0] = NewEVMInterpreter(evm, vmConfig)
+	if chainConfig.IsEWASM(ctx.BlockNumber) {
+		panic("No supported ewasm interpreter yet.")
+	}
+
+	evm.interpreters = append(evm.interpreters, NewEVMInterpreter(evm, vmConfig))
 	evm.interpreter = evm.interpreters[0]
 
 	return evm

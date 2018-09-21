@@ -124,10 +124,14 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 		rawdb.WriteDatabaseVersion(chainDb, kernel.BlockChainVersion)
 	}
 	var (
-		vmConfig    = vm.Config{EnablePreimageRecording: config.EnablePreimageRecording}
+		vmConfig = vm.Config{
+			EnablePreimageRecording: config.EnablePreimageRecording,
+			EWASMInterpreter:        config.EWASMInterpreter,
+			EVMInterpreter:          config.EVMInterpreter,
+		}
 		cacheConfig = &kernel.CacheConfig{Disabled: config.NoPruning, TrieNodeLimit: config.TrieCache, TrieTimeLimit: config.TrieTimeout}
 	)
-	can.blockchain, err = kernel.NewBlockChain(chainDb, cacheConfig, can.chainConfig, can.engine, vmConfig)
+	can.blockchain, err = kernel.NewBlockChain(chainDb, cacheConfig, can.chainConfig, can.engine, vmConfig, can.shouldPreserve)
 	if err != nil {
 		return nil, err
 	}
@@ -147,7 +151,7 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 		return nil, err
 	}
 
-	can.miner = miner.New(can, can.chainConfig, can.EventMux(), can.engine, config.MinerRecommit, config.MinerGasFloor, config.MinerGasCeil)
+	can.miner = miner.New(can, can.chainConfig, can.EventMux(), can.engine, config.MinerRecommit, config.MinerGasFloor, config.MinerGasCeil, can.isLocalBlock)
 	can.miner.SetExtra(makeExtraData(config.MinerExtraData))
 
 	can.APIBackend = &CanAPIBackend{can, nil}
@@ -293,6 +297,33 @@ func (s *CANChain) Canerbase() (eb common.Address, err error) {
 		}
 	}
 	return common.Address{}, fmt.Errorf("canerbase must be explicitly specified")
+}
+
+func (s *CANChain) isLocalBlock(block *types.Block) bool {
+	author, err := s.engine.Author(block.Header())
+	if err != nil {
+		log4j.Warn("Failed to retrieve block author", "number", block.NumberU64(), "hash", block.Hash(), "err", err)
+		return false
+	}
+	s.lock.RLock()
+	canerbase := s.canerbase
+	s.lock.RUnlock()
+	if author == canerbase {
+		return true
+	}
+	for _, account := range s.config.TxPool.Locals {
+		if account == author {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *CANChain) shouldPreserve(block *types.Block) bool {
+	if _, ok := s.engine.(*clique.Clique); ok {
+		return false
+	}
+	return s.isLocalBlock(block)
 }
 
 func (s *CANChain) SetCanerbase(canerbase common.Address) {

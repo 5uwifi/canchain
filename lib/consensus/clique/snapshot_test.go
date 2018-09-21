@@ -372,7 +372,7 @@ func TestClique(t *testing.T) {
 			}
 			batches[len(batches)-1] = append(batches[len(batches)-1], block)
 		}
-		chain, err := kernel.NewBlockChain(db, nil, &config, engine, vm.Config{})
+		chain, err := kernel.NewBlockChain(db, nil, &config, engine, vm.Config{}, nil)
 		if err != nil {
 			t.Errorf("test %d: failed to create test chain: %v", i, err)
 			continue

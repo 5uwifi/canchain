@@ -399,13 +399,13 @@ func (r *ChtRequest) Validate(db candb.Database, msg *Msg) error {
 }
 
 type BloomReq struct {
-	BloomTrieNum, BitIdx, SectionIdx, FromLevel uint64
+	BloomTrieNum, BitIdx, SectionIndex, FromLevel uint64
 }
 
 type BloomRequest light.BloomRequest
 
 func (r *BloomRequest) GetCost(peer *peer) uint64 {
-	return peer.GetRequestCost(GetHelperTrieProofsMsg, len(r.SectionIdxList))
+	return peer.GetRequestCost(GetHelperTrieProofsMsg, len(r.SectionIndexList))
 }
 
 func (r *BloomRequest) CanSend(peer *peer) bool {
@@ -419,13 +419,13 @@ func (r *BloomRequest) CanSend(peer *peer) bool {
 }
 
 func (r *BloomRequest) Request(reqID uint64, peer *peer) error {
-	peer.Log().Debug("Requesting BloomBits", "bloomTrie", r.BloomTrieNum, "bitIdx", r.BitIdx, "sections", r.SectionIdxList)
-	reqs := make([]HelperTrieReq, len(r.SectionIdxList))
+	peer.Log().Debug("Requesting BloomBits", "bloomTrie", r.BloomTrieNum, "bitIdx", r.BitIdx, "sections", r.SectionIndexList)
+	reqs := make([]HelperTrieReq, len(r.SectionIndexList))
 
 	var encNumber [10]byte
 	binary.BigEndian.PutUint16(encNumber[:2], uint16(r.BitIdx))
 
-	for i, sectionIdx := range r.SectionIdxList {
+	for i, sectionIdx := range r.SectionIndexList {
 		binary.BigEndian.PutUint64(encNumber[2:], sectionIdx)
 		reqs[i] = HelperTrieReq{
 			Type:    htBloomBits,
@@ -437,7 +437,7 @@ func (r *BloomRequest) Request(reqID uint64, peer *peer) error {
 }
 
 func (r *BloomRequest) Validate(db candb.Database, msg *Msg) error {
-	log4j.Debug("Validating BloomBits", "bloomTrie", r.BloomTrieNum, "bitIdx", r.BitIdx, "sections", r.SectionIdxList)
+	log4j.Debug("Validating BloomBits", "bloomTrie", r.BloomTrieNum, "bitIdx", r.BitIdx, "sections", r.SectionIndexList)
 
 	if msg.MsgType != MsgHelperTrieProofs {
 		return errInvalidMessageType
@@ -447,12 +447,12 @@ func (r *BloomRequest) Validate(db candb.Database, msg *Msg) error {
 	nodeSet := proofs.NodeSet()
 	reads := &readTraceDB{db: nodeSet}
 
-	r.BloomBits = make([][]byte, len(r.SectionIdxList))
+	r.BloomBits = make([][]byte, len(r.SectionIndexList))
 
 	var encNumber [10]byte
 	binary.BigEndian.PutUint16(encNumber[:2], uint16(r.BitIdx))
 
-	for i, idx := range r.SectionIdxList {
+	for i, idx := range r.SectionIndexList {
 		binary.BigEndian.PutUint64(encNumber[2:], idx)
 		value, _, err := trie.VerifyProof(r.BloomTrieRoot, encNumber[:], reads)
 		if err != nil {

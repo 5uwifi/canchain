@@ -93,10 +93,11 @@ type BlockChain struct {
 	validator Validator
 	vmConfig  vm.Config
 
-	badBlocks *lru.Cache
+	badBlocks      *lru.Cache
+	shouldPreserve func(*types.Block) bool
 }
 
-func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config) (*BlockChain, error) {
+func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *params.ChainConfig, engine consensus.Engine, vmConfig vm.Config, shouldPreserve func(block *types.Block) bool) (*BlockChain, error) {
 	if cacheConfig == nil {
 		cacheConfig = &CacheConfig{
 			TrieNodeLimit: 256 * 1024 * 1024,
@@ -110,19 +111,20 @@ func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *par
 	badBlocks, _ := lru.New(badBlockLimit)
 
 	bc := &BlockChain{
-		chainConfig:  chainConfig,
-		cacheConfig:  cacheConfig,
-		db:           db,
-		triegc:       prque.New(nil),
-		stateCache:   state.NewDatabase(db),
-		quit:         make(chan struct{}),
-		bodyCache:    bodyCache,
-		bodyRLPCache: bodyRLPCache,
-		blockCache:   blockCache,
-		futureBlocks: futureBlocks,
-		engine:       engine,
-		vmConfig:     vmConfig,
-		badBlocks:    badBlocks,
+		chainConfig:    chainConfig,
+		cacheConfig:    cacheConfig,
+		db:             db,
+		triegc:         prque.New(nil),
+		stateCache:     state.NewDatabase(db),
+		quit:           make(chan struct{}),
+		shouldPreserve: shouldPreserve,
+		bodyCache:      bodyCache,
+		bodyRLPCache:   bodyRLPCache,
+		blockCache:     blockCache,
+		futureBlocks:   futureBlocks,
+		engine:         engine,
+		vmConfig:       vmConfig,
+		badBlocks:      badBlocks,
 	}
 	bc.SetValidator(NewBlockValidator(chainConfig, bc, engine))
 	bc.SetProcessor(NewStateProcessor(chainConfig, bc, engine))
@@ -197,9 +199,9 @@ func (bc *BlockChain) loadLastState() error {
 	blockTd := bc.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
 	fastTd := bc.GetTd(currentFastBlock.Hash(), currentFastBlock.NumberU64())
 
-	log4j.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "td", headerTd)
-	log4j.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "td", blockTd)
-	log4j.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "td", fastTd)
+	log4j.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "td", headerTd, "age", common.PrettyAge(time.Unix(currentHeader.Time.Int64(), 0)))
+	log4j.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "td", blockTd, "age", common.PrettyAge(time.Unix(currentBlock.Time().Int64(), 0)))
+	log4j.Info("Loaded most recent local fast block", "number", currentFastBlock.Number(), "hash", currentFastBlock.Hash(), "td", fastTd, "age", common.PrettyAge(time.Unix(currentFastBlock.Time().Int64(), 0)))
 
 	return nil
 }
@@ -692,13 +694,16 @@ func (bc *BlockChain) InsertReceiptChain(blockChain types.Blocks, receiptChain [
 	}
 	bc.mu.Unlock()
 
-	log4j.Info("Imported new block receipts",
-		"count", stats.processed,
-		"elapsed", common.PrettyDuration(time.Since(start)),
-		"number", head.Number(),
-		"hash", head.Hash(),
+	context := []interface{}{
+		"count", stats.processed, "elapsed", common.PrettyDuration(time.Since(start)),
+		"number", head.Number(), "hash", head.Hash(), "age", common.PrettyAge(time.Unix(head.Time().Int64(), 0)),
 		"size", common.StorageSize(bytes),
-		"ignored", stats.ignored)
+	}
+	if stats.ignored > 0 {
+		context = append(context, []interface{}{"ignored", stats.ignored}...)
+	}
+	log4j.Info("Imported new block receipts", context...)
+
 	return 0, nil
 }
 
@@ -786,7 +791,15 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	reorg := externTd.Cmp(localTd) > 0
 	currentBlock = bc.CurrentBlock()
 	if !reorg && externTd.Cmp(localTd) == 0 {
-		reorg = block.NumberU64() < currentBlock.NumberU64() || (block.NumberU64() == currentBlock.NumberU64() && mrand.Float64() < 0.5)
+		if block.NumberU64() < currentBlock.NumberU64() {
+			reorg = true
+		} else if block.NumberU64() == currentBlock.NumberU64() {
+			var currentPreserve, blockPreserve bool
+			if bc.shouldPreserve != nil {
+				currentPreserve, blockPreserve = bc.shouldPreserve(currentBlock), bc.shouldPreserve(block)
+			}
+			reorg = !currentPreserve && (blockPreserve || mrand.Float64() < 0.5)
+		}
 	}
 	if reorg {
 		if block.ParentHash() != currentBlock.Hash() {
@@ -1003,8 +1016,13 @@ func (st *insertStats) report(chain []*types.Block, index int, cache common.Stor
 		context := []interface{}{
 			"blocks", st.processed, "txs", txs, "mgas", float64(st.usedGas) / 1000000,
 			"elapsed", common.PrettyDuration(elapsed), "mgasps", float64(st.usedGas) * 1000 / float64(elapsed),
-			"number", end.Number(), "hash", end.Hash(), "cache", cache,
+			"number", end.Number(), "hash", end.Hash(),
 		}
+		if timestamp := time.Unix(end.Time().Int64(), 0); time.Since(timestamp) > time.Minute {
+			context = append(context, []interface{}{"age", common.PrettyAge(timestamp)}...)
+		}
+		context = append(context, []interface{}{"cache", cache}...)
+
 		if st.queued > 0 {
 			context = append(context, []interface{}{"queued", st.queued}...)
 		}

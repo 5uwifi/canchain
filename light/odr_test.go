@@ -233,7 +233,7 @@ func testChainOdr(t *testing.T, protocol int, fn odrTestFn) {
 		genesis = gspec.MustCommit(sdb)
 	)
 	gspec.MustCommit(ldb)
-	blockchain, _ := kernel.NewBlockChain(sdb, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{})
+	blockchain, _ := kernel.NewBlockChain(sdb, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil)
 	gchain, _ := kernel.GenerateChain(params.TestChainConfig, genesis, ethash.NewFaker(), sdb, 4, testChainGen)
 	if _, err := blockchain.InsertChain(gchain); err != nil {
 		t.Fatal(err)

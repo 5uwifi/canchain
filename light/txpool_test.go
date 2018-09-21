@@ -68,7 +68,7 @@ func TestTxPool(t *testing.T) {
 		genesis = gspec.MustCommit(sdb)
 	)
 	gspec.MustCommit(ldb)
-	blockchain, _ := kernel.NewBlockChain(sdb, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{})
+	blockchain, _ := kernel.NewBlockChain(sdb, nil, params.TestChainConfig, ethash.NewFullFaker(), vm.Config{}, nil)
 	gchain, _ := kernel.GenerateChain(params.TestChainConfig, genesis, ethash.NewFaker(), sdb, poolTestBlocks, txPoolTestChainGen)
 	if _, err := blockchain.InsertChain(gchain); err != nil {
 		panic(err)

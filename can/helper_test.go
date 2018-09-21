@@ -37,7 +37,7 @@ func newTestProtocolManager(mode downloader.SyncMode, blocks int, generator func
 			Alloc:  kernel.GenesisAlloc{testBank: {Balance: big.NewInt(1000000)}},
 		}
 		genesis       = gspec.MustCommit(db)
-		blockchain, _ = kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{})
+		blockchain, _ = kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{}, nil)
 	)
 	chain, _ := kernel.GenerateChain(gspec.Config, genesis, ethash.NewFaker(), db, blocks, generator)
 	if _, err := blockchain.InsertChain(chain); err != nil {

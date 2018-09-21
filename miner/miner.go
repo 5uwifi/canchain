@@ -33,13 +33,13 @@ type Miner struct {
 	shouldStart int32
 }
 
-func New(can Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, recommit time.Duration, gasFloor, gasCeil uint64) *Miner {
+func New(can Backend, config *params.ChainConfig, mux *event.TypeMux, engine consensus.Engine, recommit time.Duration, gasFloor, gasCeil uint64, isLocalBlock func(block *types.Block) bool) *Miner {
 	miner := &Miner{
 		can:      can,
 		mux:      mux,
 		engine:   engine,
 		exitCh:   make(chan struct{}),
-		worker:   newWorker(config, engine, can, mux, recommit, gasFloor, gasCeil),
+		worker:   newWorker(config, engine, can, mux, recommit, gasFloor, gasCeil, isLocalBlock),
 		canStart: 1,
 	}
 	go miner.update()

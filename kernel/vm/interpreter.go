@@ -14,6 +14,9 @@ type Config struct {
 	NoRecursion bool
 	EnablePreimageRecording bool
 	JumpTable [256]operation
+
+	EWASMInterpreter string
+	EVMInterpreter string
 }
 
 type Interpreter interface {

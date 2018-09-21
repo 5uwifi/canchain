@@ -23,12 +23,12 @@ type lcsCommons struct {
 }
 
 type NodeInfo struct {
-	Network    uint64                  `json:"network"`
-	Difficulty *big.Int                `json:"difficulty"`
-	Genesis    common.Hash             `json:"genesis"`
-	Config     *params.ChainConfig     `json:"config"`
-	Head       common.Hash             `json:"head"`
-	CHT        light.TrustedCheckpoint `json:"cht"`
+	Network    uint64                   `json:"network"`
+	Difficulty *big.Int                 `json:"difficulty"`
+	Genesis    common.Hash              `json:"genesis"`
+	Config     *params.ChainConfig      `json:"config"`
+	Head       common.Hash              `json:"head"`
+	CHT        params.TrustedCheckpoint `json:"cht"`
 }
 
 func (c *lcsCommons) makeProtocols(versions []uint) []p2p.Protocol {
@@ -55,7 +55,7 @@ func (c *lcsCommons) makeProtocols(versions []uint) []p2p.Protocol {
 }
 
 func (c *lcsCommons) nodeInfo() interface{} {
-	var cht light.TrustedCheckpoint
+	var cht params.TrustedCheckpoint
 	sections, _, _ := c.chtIndexer.Sections()
 	sections2, _, _ := c.bloomTrieIndexer.Sections()
 
@@ -76,11 +76,11 @@ func (c *lcsCommons) nodeInfo() interface{} {
 			idxV2 := (sectionIndex+1)*c.iConfig.PairChtSize/c.iConfig.ChtSize - 1
 			chtRoot = light.GetChtRoot(c.chainDb, idxV2, sectionHead)
 		}
-		cht = light.TrustedCheckpoint{
-			SectionIdx:  sectionIndex,
-			SectionHead: sectionHead,
-			CHTRoot:     chtRoot,
-			BloomRoot:   light.GetBloomTrieRoot(c.chainDb, sectionIndex, sectionHead),
+		cht = params.TrustedCheckpoint{
+			SectionIndex: sectionIndex,
+			SectionHead:  sectionHead,
+			CHTRoot:      chtRoot,
+			BloomRoot:    light.GetBloomTrieRoot(c.chainDb, sectionIndex, sectionHead),
 		}
 	}
 

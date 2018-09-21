@@ -102,7 +102,7 @@ func TestSetupGenesis(t *testing.T) {
 			fn: func(db candb.Database) (*params.ChainConfig, common.Hash, error) {
 				genesis := oldcustomg.MustCommit(db)
 
-				bc, _ := NewBlockChain(db, nil, oldcustomg.Config, ethash.NewFullFaker(), vm.Config{})
+				bc, _ := NewBlockChain(db, nil, oldcustomg.Config, ethash.NewFullFaker(), vm.Config{}, nil)
 				defer bc.Stop()
 
 				blocks, _ := GenerateChain(oldcustomg.Config, genesis, ethash.NewFaker(), db, 4, nil)

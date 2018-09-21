@@ -210,8 +210,18 @@ func (hc *HeaderChain) InsertHeaderChain(chain []*types.Header, writeHeader WhCa
 		stats.processed++
 	}
 	last := chain[len(chain)-1]
-	log4j.Info("Imported new block headers", "count", stats.processed, "elapsed", common.PrettyDuration(time.Since(start)),
-		"number", last.Number, "hash", last.Hash(), "ignored", stats.ignored)
+
+	context := []interface{}{
+		"count", stats.processed, "elapsed", common.PrettyDuration(time.Since(start)),
+		"number", last.Number, "hash", last.Hash(),
+	}
+	if timestamp := time.Unix(last.Time.Int64(), 0); time.Since(timestamp) > time.Minute {
+		context = append(context, []interface{}{"age", common.PrettyAge(timestamp)}...)
+	}
+	if stats.ignored > 0 {
+		context = append(context, []interface{}{"ignored", stats.ignored}...)
+	}
+	log4j.Info("Imported new block headers", context...)
 
 	return 0, nil
 }

@@ -117,17 +117,17 @@ func (req *ChtRequest) StoreResult(db candb.Database) {
 
 type BloomRequest struct {
 	OdrRequest
-	Config         *IndexerConfig
-	BloomTrieNum   uint64
-	BitIdx         uint
-	SectionIdxList []uint64
-	BloomTrieRoot  common.Hash
-	BloomBits      [][]byte
-	Proofs         *NodeSet
+	Config           *IndexerConfig
+	BloomTrieNum     uint64
+	BitIdx           uint
+	SectionIndexList []uint64
+	BloomTrieRoot    common.Hash
+	BloomBits        [][]byte
+	Proofs           *NodeSet
 }
 
 func (req *BloomRequest) StoreResult(db candb.Database) {
-	for i, sectionIdx := range req.SectionIdxList {
+	for i, sectionIdx := range req.SectionIndexList {
 		sectionHead := rawdb.ReadCanonicalHash(db, (sectionIdx+1)*req.Config.BloomTrieSize-1)
 		rawdb.WriteBloomBits(db, req.BitIdx, sectionIdx, sectionHead, req.BloomBits[i])
 	}

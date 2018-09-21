@@ -165,7 +165,7 @@ func (r *sentReq) stateRequesting() reqStateFn {
 				r.stop(light.ErrNoPeers)
 				return nil
 			}
-		case rpSoftTimeout:
+		case rpSoftTimeout, rpDeliveredInvalid:
 			go r.tryRequest()
 			r.lastReqQueued = true
 			return r.stateRequesting
@@ -191,7 +191,11 @@ func (r *sentReq) stateNoMorePeers() reqStateFn {
 			r.stop(nil)
 			return r.stateStopped
 		}
-		return r.stateNoMorePeers
+		if r.waiting() {
+			return r.stateNoMorePeers
+		}
+		r.stop(light.ErrNoPeers)
+		return nil
 	case <-r.stopCh:
 		return r.stateStopped
 	}

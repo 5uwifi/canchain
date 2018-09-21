@@ -48,7 +48,7 @@ func NewSimulatedBackend(alloc kernel.GenesisAlloc, gasLimit uint64) *SimulatedB
 	database := candb.NewMemDatabase()
 	genesis := kernel.Genesis{Config: params.AllEthashProtocolChanges, GasLimit: gasLimit, Alloc: alloc}
 	genesis.MustCommit(database)
-	blockchain, _ := kernel.NewBlockChain(database, nil, genesis.Config, ethash.NewFaker(), vm.Config{})
+	blockchain, _ := kernel.NewBlockChain(database, nil, genesis.Config, ethash.NewFaker(), vm.Config{}, nil)
 
 	backend := &SimulatedBackend{
 		database:   database,

@@ -106,6 +106,8 @@ var (
 		utils.NoCompactionFlag,
 		utils.GpoBlocksFlag,
 		utils.GpoPercentileFlag,
+		utils.EWASMInterpreterFlag,
+		utils.EVMInterpreterFlag,
 		configFileFlag,
 	}
 

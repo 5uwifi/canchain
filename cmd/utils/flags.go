@@ -547,6 +547,17 @@ var (
 		Usage: "InfluxDB `host` tag attached to all measurements",
 		Value: "localhost",
 	}
+
+	EWASMInterpreterFlag = cli.StringFlag{
+		Name:  "vm.ewasm",
+		Usage: "External ewasm configuration (default = built-in interpreter)",
+		Value: "",
+	}
+	EVMInterpreterFlag = cli.StringFlag{
+		Name:  "vm.evm",
+		Usage: "External EVM configuration (default = built-in interpreter)",
+		Value: "",
+	}
 )
 
 func MakeDataDir(ctx *cli.Context) string {
@@ -1071,6 +1082,14 @@ func SetEthConfig(ctx *cli.Context, stack *node.Node, cfg *can.Config) {
 		cfg.EnablePreimageRecording = ctx.GlobalBool(VMEnableDebugFlag.Name)
 	}
 
+	if ctx.GlobalIsSet(EWASMInterpreterFlag.Name) {
+		cfg.EWASMInterpreter = ctx.GlobalString(EWASMInterpreterFlag.Name)
+	}
+
+	if ctx.GlobalIsSet(EVMInterpreterFlag.Name) {
+		cfg.EVMInterpreter = ctx.GlobalString(EVMInterpreterFlag.Name)
+	}
+
 	switch {
 	case ctx.GlobalBool(TestnetFlag.Name):
 		if !ctx.GlobalIsSet(NetworkIdFlag.Name) {
@@ -1242,7 +1261,7 @@ func MakeChain(ctx *cli.Context, stack *node.Node) (chain *kernel.BlockChain, ch
 		cache.TrieNodeLimit = ctx.GlobalInt(CacheFlag.Name) * ctx.GlobalInt(CacheGCFlag.Name) / 100
 	}
 	vmcfg := vm.Config{EnablePreimageRecording: ctx.GlobalBool(VMEnableDebugFlag.Name)}
-	chain, err = kernel.NewBlockChain(chainDb, cache, config, engine, vmcfg)
+	chain, err = kernel.NewBlockChain(chainDb, cache, config, engine, vmcfg, nil)
 	if err != nil {
 		Fatalf("Can't create BlockChain: %v", err)
 	}

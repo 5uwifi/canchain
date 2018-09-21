@@ -109,9 +109,10 @@ type worker struct {
 	resubmitIntervalCh chan time.Duration
 	resubmitAdjustCh   chan *intervalAdjust
 
-	current        *environment
-	possibleUncles map[common.Hash]*types.Block
-	unconfirmed    *unconfirmedBlocks
+	current      *environment
+	localUncles  map[common.Hash]*types.Block
+	remoteUncles map[common.Hash]*types.Block
+	unconfirmed  *unconfirmedBlocks
 
 	mu       sync.RWMutex
 	coinbase common.Address
@@ -127,13 +128,15 @@ type worker struct {
 	running int32
 	newTxs  int32
 
+	isLocalBlock func(block *types.Block) bool
+
 	newTaskHook  func(*task)
 	skipSealHook func(*task) bool
 	fullTaskHook func()
 	resubmitHook func(time.Duration, time.Duration)
 }
 
-func newWorker(config *params.ChainConfig, engine consensus.Engine, can Backend, mux *event.TypeMux, recommit time.Duration, gasFloor, gasCeil uint64) *worker {
+func newWorker(config *params.ChainConfig, engine consensus.Engine, can Backend, mux *event.TypeMux, recommit time.Duration, gasFloor, gasCeil uint64, isLocalBlock func(*types.Block) bool) *worker {
 	worker := &worker{
 		config:             config,
 		engine:             engine,
@@ -142,7 +145,9 @@ func newWorker(config *params.ChainConfig, engine consensus.Engine, can Backend,
 		chain:              can.BlockChain(),
 		gasFloor:           gasFloor,
 		gasCeil:            gasCeil,
-		possibleUncles:     make(map[common.Hash]*types.Block),
+		isLocalBlock:       isLocalBlock,
+		localUncles:        make(map[common.Hash]*types.Block),
+		remoteUncles:       make(map[common.Hash]*types.Block),
 		unconfirmed:        newUnconfirmedBlocks(can.BlockChain(), miningLogAtDepth),
 		pendingTasks:       make(map[common.Hash]*task),
 		txsCh:              make(chan kernel.NewTxsEvent, txChanSize),
@@ -335,10 +340,17 @@ func (w *worker) mainLoop() {
 			w.commitNewWork(req.interrupt, req.noempty, req.timestamp)
 
 		case ev := <-w.chainSideCh:
-			if _, exist := w.possibleUncles[ev.Block.Hash()]; exist {
+			if _, exist := w.localUncles[ev.Block.Hash()]; exist {
 				continue
 			}
-			w.possibleUncles[ev.Block.Hash()] = ev.Block
+			if _, exist := w.remoteUncles[ev.Block.Hash()]; exist {
+				continue
+			}
+			if w.isLocalBlock != nil && w.isLocalBlock(ev.Block) {
+				w.localUncles[ev.Block.Hash()] = ev.Block
+			} else {
+				w.remoteUncles[ev.Block.Hash()] = ev.Block
+			}
 			if w.isRunning() && w.current != nil && w.current.uncles.Cardinality() < 2 {
 				start := time.Now()
 				if err := w.commitUncle(w.current, ev.Block.Header()); err == nil {
@@ -348,7 +360,10 @@ func (w *worker) mainLoop() {
 						if !ok {
 							return false
 						}
-						uncle, exist := w.possibleUncles[hash]
+						uncle, exist := w.localUncles[hash]
+						if !exist {
+							uncle, exist = w.remoteUncles[hash]
+						}
 						if !exist {
 							return false
 						}
@@ -550,7 +565,10 @@ func (w *worker) updateSnapshot() {
 		if !ok {
 			return false
 		}
-		uncle, exist := w.possibleUncles[hash]
+		uncle, exist := w.localUncles[hash]
+		if !exist {
+			uncle, exist = w.remoteUncles[hash]
+		}
 		if !exist {
 			return false
 		}
@@ -718,23 +736,27 @@ func (w *worker) commitNewWork(interrupt *int32, noempty bool, timestamp int64) 
 	if w.config.DAOForkSupport && w.config.DAOForkBlock != nil && w.config.DAOForkBlock.Cmp(header.Number) == 0 {
 		misc.ApplyDAOHardFork(env.state)
 	}
-	for hash, uncle := range w.possibleUncles {
-		if uncle.NumberU64()+staleThreshold <= header.Number.Uint64() {
-			delete(w.possibleUncles, hash)
-		}
-	}
 	uncles := make([]*types.Header, 0, 2)
-	for hash, uncle := range w.possibleUncles {
-		if len(uncles) == 2 {
-			break
+	commitUncles := func(blocks map[common.Hash]*types.Block) {
+		for hash, uncle := range blocks {
+			if uncle.NumberU64()+staleThreshold <= header.Number.Uint64() {
+				delete(blocks, hash)
+			}
 		}
-		if err := w.commitUncle(env, uncle.Header()); err != nil {
-			log4j.Trace("Possible uncle rejected", "hash", hash, "reason", err)
-		} else {
-			log4j.Debug("Committing new uncle to block", "hash", hash)
-			uncles = append(uncles, uncle.Header())
+		for hash, uncle := range blocks {
+			if len(uncles) == 2 {
+				break
+			}
+			if err := w.commitUncle(env, uncle.Header()); err != nil {
+				log4j.Trace("Possible uncle rejected", "hash", hash, "reason", err)
+			} else {
+				log4j.Debug("Committing new uncle to block", "hash", hash)
+				uncles = append(uncles, uncle.Header())
+			}
 		}
 	}
+	commitUncles(w.localUncles)
+	commitUncles(w.remoteUncles)
 
 	if !noempty {
 		w.commit(uncles, nil, false, tstart)

@@ -93,6 +93,9 @@ type Config struct {
 	EnablePreimageRecording bool
 
 	DocRoot string `toml:"-"`
+
+	EWASMInterpreter string
+	EVMInterpreter   string
 }
 
 type configMarshaling struct {

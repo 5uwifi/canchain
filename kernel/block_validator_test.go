@@ -23,7 +23,7 @@ func TestHeaderVerification(t *testing.T) {
 	for i, block := range blocks {
 		headers[i] = block.Header()
 	}
-	chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{})
+	chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil)
 	defer chain.Stop()
 
 	for i := 0; i < len(blocks); i++ {
@@ -80,11 +80,11 @@ func testHeaderConcurrentVerification(t *testing.T, threads int) {
 		var results <-chan error
 
 		if valid {
-			chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{})
+			chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFaker(), vm.Config{}, nil)
 			_, results = chain.engine.VerifyHeaders(chain, headers, seals)
 			chain.Stop()
 		} else {
-			chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFakeFailer(uint64(len(headers)-1)), vm.Config{})
+			chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFakeFailer(uint64(len(headers)-1)), vm.Config{}, nil)
 			_, results = chain.engine.VerifyHeaders(chain, headers, seals)
 			chain.Stop()
 		}
@@ -136,7 +136,7 @@ func testHeaderConcurrentAbortion(t *testing.T, threads int) {
 	old := runtime.GOMAXPROCS(threads)
 	defer runtime.GOMAXPROCS(old)
 
-	chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFakeDelayer(time.Millisecond), vm.Config{})
+	chain, _ := NewBlockChain(testdb, nil, params.TestChainConfig, ethash.NewFakeDelayer(time.Millisecond), vm.Config{}, nil)
 	defer chain.Stop()
 
 	abort, results := chain.engine.VerifyHeaders(chain, headers, seals)

@@ -76,7 +76,7 @@ func newTestWorkerBackend(t *testing.T, chainConfig *params.ChainConfig, engine 
 	}
 	genesis := gspec.MustCommit(db)
 
-	chain, _ := kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{})
+	chain, _ := kernel.NewBlockChain(db, nil, gspec.Config, engine, vm.Config{}, nil)
 	txpool := kernel.NewTxPool(testTxPoolConfig, chainConfig, chain)
 
 	if n > 0 {
@@ -112,7 +112,7 @@ func (b *testWorkerBackend) PostChainEvents(events []interface{}) {
 func newTestWorker(t *testing.T, chainConfig *params.ChainConfig, engine consensus.Engine, blocks int) (*worker, *testWorkerBackend) {
 	backend := newTestWorkerBackend(t, chainConfig, engine, blocks)
 	backend.txPool.AddLocals(pendingTxs)
-	w := newWorker(chainConfig, engine, backend, new(event.TypeMux), time.Second, params.GenesisGasLimit, params.GenesisGasLimit)
+	w := newWorker(chainConfig, engine, backend, new(event.TypeMux), time.Second, params.GenesisGasLimit, params.GenesisGasLimit, nil)
 	w.setCanerbase(testBankAddress)
 	return w, backend
 }

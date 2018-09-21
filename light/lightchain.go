@@ -93,19 +93,19 @@ func NewLightChain(odr OdrBackend, config *params.ChainConfig, engine consensus.
 	return bc, nil
 }
 
-func (self *LightChain) addTrustedCheckpoint(cp TrustedCheckpoint) {
+func (self *LightChain) addTrustedCheckpoint(cp *params.TrustedCheckpoint) {
 	if self.odr.ChtIndexer() != nil {
-		StoreChtRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.CHTRoot)
-		self.odr.ChtIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
+		StoreChtRoot(self.chainDb, cp.SectionIndex, cp.SectionHead, cp.CHTRoot)
+		self.odr.ChtIndexer().AddCheckpoint(cp.SectionIndex, cp.SectionHead)
 	}
 	if self.odr.BloomTrieIndexer() != nil {
-		StoreBloomTrieRoot(self.chainDb, cp.SectionIdx, cp.SectionHead, cp.BloomRoot)
-		self.odr.BloomTrieIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
+		StoreBloomTrieRoot(self.chainDb, cp.SectionIndex, cp.SectionHead, cp.BloomRoot)
+		self.odr.BloomTrieIndexer().AddCheckpoint(cp.SectionIndex, cp.SectionHead)
 	}
 	if self.odr.BloomIndexer() != nil {
-		self.odr.BloomIndexer().AddCheckpoint(cp.SectionIdx, cp.SectionHead)
+		self.odr.BloomIndexer().AddCheckpoint(cp.SectionIndex, cp.SectionHead)
 	}
-	log4j.Info("Added trusted checkpoint", "chain", cp.name, "block", (cp.SectionIdx+1)*self.indexerConfig.ChtSize-1, "hash", cp.SectionHead)
+	log4j.Info("Added trusted checkpoint", "chain", cp.Name, "block", (cp.SectionIndex+1)*self.indexerConfig.ChtSize-1, "hash", cp.SectionHead)
 }
 
 func (self *LightChain) getProcInterrupt() bool {
@@ -127,7 +127,7 @@ func (self *LightChain) loadLastState() error {
 
 	header := self.hc.CurrentHeader()
 	headerTd := self.GetTd(header.Hash(), header.Number.Uint64())
-	log4j.Info("Loaded most recent local header", "number", header.Number, "hash", header.Hash(), "td", headerTd)
+	log4j.Info("Loaded most recent local header", "number", header.Number, "hash", header.Hash(), "td", headerTd, "age", common.PrettyAge(time.Unix(header.Time.Int64(), 0)))
 
 	return nil
 }
@@ -381,7 +381,7 @@ func (self *LightChain) SyncCht(ctx context.Context) bool {
 		defer self.mu.Unlock()
 
 		if self.hc.CurrentHeader().Number.Uint64() < header.Number.Uint64() {
-			log4j.Info("Updated latest header based on CHT", "number", header.Number, "hash", header.Hash())
+			log4j.Info("Updated latest header based on CHT", "number", header.Number, "hash", header.Hash(), "age", common.PrettyAge(time.Unix(header.Time.Int64(), 0)))
 			self.hc.SetCurrentHeader(header)
 		}
 		return true
