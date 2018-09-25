@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 )
 
 func TestMocker(t *testing.T) {
@@ -56,7 +56,7 @@ func TestMocker(t *testing.T) {
 	var opts SubscribeOpts
 	sub, err := client.SubscribeNetwork(events, opts)
 	defer sub.Unsubscribe()
-	nodemap := make(map[discover.NodeID]bool)
+	nodemap := make(map[cnode.ID]bool)
 	wg.Add(1)
 	nodesComplete := false
 	connCount := 0

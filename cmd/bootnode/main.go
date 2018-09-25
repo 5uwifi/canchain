@@ -10,6 +10,7 @@ import (
 	"github.com/5uwifi/canchain/cmd/utils"
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/discover"
 	"github.com/5uwifi/canchain/lib/p2p/discv5"
 	"github.com/5uwifi/canchain/lib/p2p/nat"
@@ -68,7 +69,7 @@ func main() {
 	}
 
 	if *writeAddr {
-		fmt.Printf("%v\n", discover.PubkeyID(&nodeKey.PublicKey))
+		fmt.Printf("%v\n", cnode.PubkeyToIDV4(&nodeKey.PublicKey))
 		os.Exit(0)
 	}
 

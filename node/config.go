@@ -16,7 +16,7 @@ import (
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/rpc"
 )
 
@@ -226,15 +226,15 @@ func (c *Config) NodeKey() *ecdsa.PrivateKey {
 	return key
 }
 
-func (c *Config) StaticNodes() []*discover.Node {
+func (c *Config) StaticNodes() []*cnode.Node {
 	return c.parsePersistentNodes(c.ResolvePath(datadirStaticNodes))
 }
 
-func (c *Config) TrustedNodes() []*discover.Node {
+func (c *Config) TrustedNodes() []*cnode.Node {
 	return c.parsePersistentNodes(c.ResolvePath(datadirTrustedNodes))
 }
 
-func (c *Config) parsePersistentNodes(path string) []*discover.Node {
+func (c *Config) parsePersistentNodes(path string) []*cnode.Node {
 	if c.DataDir == "" {
 		return nil
 	}
@@ -246,12 +246,12 @@ func (c *Config) parsePersistentNodes(path string) []*discover.Node {
 		log4j.Error(fmt.Sprintf("Can't load node file %s: %v", path, err))
 		return nil
 	}
-	var nodes []*discover.Node
+	var nodes []*cnode.Node
 	for _, url := range nodelist {
 		if url == "" {
 			continue
 		}
-		node, err := discover.ParseNode(url)
+		node, err := cnode.ParseV4(url)
 		if err != nil {
 			log4j.Error(fmt.Sprintf("Node URL %s: %v\n", url, err))
 			continue

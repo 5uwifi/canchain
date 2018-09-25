@@ -12,7 +12,7 @@ import (
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/rpc"
 )
@@ -40,7 +40,7 @@ type NodeAdapter interface {
 }
 
 type NodeConfig struct {
-	ID discover.NodeID
+	ID cnode.ID
 
 	PrivateKey *ecdsa.PrivateKey
 
@@ -50,7 +50,7 @@ type NodeConfig struct {
 
 	Services []string
 
-	Reachable func(id discover.NodeID) bool
+	Reachable func(id cnode.ID) bool
 
 	Port uint16
 }
@@ -85,11 +85,9 @@ func (n *NodeConfig) UnmarshalJSON(data []byte) error {
 	}
 
 	if confJSON.ID != "" {
-		nodeID, err := discover.HexID(confJSON.ID)
-		if err != nil {
+		if err := n.ID.UnmarshalText([]byte(confJSON.ID)); err != nil {
 			return err
 		}
-		n.ID = nodeID
 	}
 
 	if confJSON.PrivateKey != "" {
@@ -112,13 +110,17 @@ func (n *NodeConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+func (n *NodeConfig) Node() *cnode.Node {
+	return cnode.NewV4(&n.PrivateKey.PublicKey, net.IP{127, 0, 0, 1}, int(n.Port), int(n.Port))
+}
+
 func RandomNodeConfig() *NodeConfig {
 	key, err := crypto.GenerateKey()
 	if err != nil {
 		panic("unable to generate key")
 	}
 
-	id := discover.PubkeyID(&key.PublicKey)
+	id := cnode.PubkeyToIDV4(&key.PublicKey)
 	port, err := assignTCPPort()
 	if err != nil {
 		panic("unable to assign tcp port")
@@ -158,7 +160,7 @@ type ServiceContext struct {
 }
 
 type RPCDialer interface {
-	DialRPC(id discover.NodeID) (*rpc.Client, error)
+	DialRPC(id cnode.ID) (*rpc.Client, error)
 }
 
 type Services map[string]ServiceFunc

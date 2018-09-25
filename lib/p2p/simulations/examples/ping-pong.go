@@ -11,7 +11,7 @@ import (
 
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 	"github.com/5uwifi/canchain/node"
@@ -71,12 +71,12 @@ func main() {
 }
 
 type pingPongService struct {
-	id       discover.NodeID
+	id       cnode.ID
 	log      log4j.Logger
 	received int64
 }
 
-func newPingPongService(id discover.NodeID) *pingPongService {
+func newPingPongService(id cnode.ID) *pingPongService {
 	return &pingPongService{
 		id:  id,
 		log: log4j.New("node.id", id),

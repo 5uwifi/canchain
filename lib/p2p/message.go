@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/lib/event"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/rlp"
 )
 
@@ -182,11 +182,11 @@ type msgEventer struct {
 	MsgReadWriter
 
 	feed     *event.Feed
-	peerID   discover.NodeID
+	peerID   cnode.ID
 	Protocol string
 }
 
-func newMsgEventer(rw MsgReadWriter, feed *event.Feed, peerID discover.NodeID, proto string) *msgEventer {
+func newMsgEventer(rw MsgReadWriter, feed *event.Feed, peerID cnode.ID, proto string) *msgEventer {
 	return &msgEventer{
 		MsgReadWriter: rw,
 		feed:          feed,

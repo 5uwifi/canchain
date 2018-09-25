@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/lib/log4j"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 )
 
@@ -125,7 +125,7 @@ func probabilistic(net *Network, quit chan struct{}, nodeCount int) {
 				wg.Done()
 				continue
 			}
-			go func(id discover.NodeID) {
+			go func(id cnode.ID) {
 				time.Sleep(randWait)
 				err := net.Start(id)
 				if err != nil {
@@ -139,8 +139,8 @@ func probabilistic(net *Network, quit chan struct{}, nodeCount int) {
 
 }
 
-func connectNodesInRing(net *Network, nodeCount int) ([]discover.NodeID, error) {
-	ids := make([]discover.NodeID, nodeCount)
+func connectNodesInRing(net *Network, nodeCount int) ([]cnode.ID, error) {
+	ids := make([]cnode.ID, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		conf := adapters.RandomNodeConfig()
 		node, err := net.NewNodeWithConfig(conf)

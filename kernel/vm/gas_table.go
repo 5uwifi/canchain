@@ -92,17 +92,49 @@ func gasReturnDataCopy(gt params.GasTable, evm *EVM, contract *Contract, stack *
 
 func gasSStore(gt params.GasTable, evm *EVM, contract *Contract, stack *Stack, mem *Memory, memorySize uint64) (uint64, error) {
 	var (
-		y, x = stack.Back(1), stack.Back(0)
-		val  = evm.StateDB.GetState(contract.Address(), common.BigToHash(x))
+		y, x    = stack.Back(1), stack.Back(0)
+		current = evm.StateDB.GetState(contract.Address(), common.BigToHash(x))
 	)
-	if val == (common.Hash{}) && y.Sign() != 0 {
-		return params.SstoreSetGas, nil
-	} else if val != (common.Hash{}) && y.Sign() == 0 {
-		evm.StateDB.AddRefund(params.SstoreRefundGas)
-		return params.SstoreClearGas, nil
-	} else {
-		return params.SstoreResetGas, nil
+	if !evm.chainRules.IsConstantinople {
+		switch {
+		case current == (common.Hash{}) && y.Sign() != 0:
+			return params.SstoreSetGas, nil
+		case current != (common.Hash{}) && y.Sign() == 0:
+			evm.StateDB.AddRefund(params.SstoreRefundGas)
+			return params.SstoreClearGas, nil
+		default:
+			return params.SstoreResetGas, nil
+		}
 	}
+	value := common.BigToHash(y)
+	if current == value {
+		return params.NetSstoreNoopGas, nil
+	}
+	original := evm.StateDB.GetCommittedState(contract.Address(), common.BigToHash(x))
+	if original == current {
+		if original == (common.Hash{}) {
+			return params.NetSstoreInitGas, nil
+		}
+		if value == (common.Hash{}) {
+			evm.StateDB.AddRefund(params.NetSstoreClearRefund)
+		}
+		return params.NetSstoreCleanGas, nil
+	}
+	if original != (common.Hash{}) {
+		if current == (common.Hash{}) {
+			evm.StateDB.SubRefund(params.NetSstoreClearRefund)
+		} else if value == (common.Hash{}) {
+			evm.StateDB.AddRefund(params.NetSstoreClearRefund)
+		}
+	}
+	if original == value {
+		if original == (common.Hash{}) {
+			evm.StateDB.AddRefund(params.NetSstoreResetClearRefund)
+		} else {
+			evm.StateDB.AddRefund(params.NetSstoreResetRefund)
+		}
+	}
+	return params.NetSstoreDirtyGas, nil
 }
 
 func makeGasLog(n uint64) gasFunc {

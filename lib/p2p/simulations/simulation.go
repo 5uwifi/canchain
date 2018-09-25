@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 )
 
 type Simulation struct {
@@ -31,7 +31,7 @@ func (s *Simulation) Run(ctx context.Context, step *Step) (result *StepResult) {
 		return
 	}
 
-	nodes := make(map[discover.NodeID]struct{}, len(step.Expect.Nodes))
+	nodes := make(map[cnode.ID]struct{}, len(step.Expect.Nodes))
 	for _, id := range step.Expect.Nodes {
 		nodes[id] = struct{}{}
 	}
@@ -89,20 +89,20 @@ func (s *Simulation) watchNetwork(result *StepResult) func() {
 type Step struct {
 	Action func(context.Context) error
 
-	Trigger chan discover.NodeID
+	Trigger chan cnode.ID
 
 	Expect *Expectation
 }
 
 type Expectation struct {
-	Nodes []discover.NodeID
+	Nodes []cnode.ID
 
-	Check func(context.Context, discover.NodeID) (bool, error)
+	Check func(context.Context, cnode.ID) (bool, error)
 }
 
 func newStepResult() *StepResult {
 	return &StepResult{
-		Passes: make(map[discover.NodeID]time.Time),
+		Passes: make(map[cnode.ID]time.Time),
 	}
 }
 
@@ -113,7 +113,7 @@ type StepResult struct {
 
 	FinishedAt time.Time
 
-	Passes map[discover.NodeID]time.Time
+	Passes map[cnode.ID]time.Time
 
 	NetworkEvents []*Event
 }

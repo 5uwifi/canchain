@@ -12,7 +12,7 @@ import (
 	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/log4j"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/rpc"
 )
 
@@ -73,12 +73,12 @@ func (api *PublicWhisperAPI) SetBloomFilter(ctx context.Context, bloom hexutil.B
 	return true, api.w.SetBloomFilter(bloom)
 }
 
-func (api *PublicWhisperAPI) MarkTrustedPeer(ctx context.Context, ccnode string) (bool, error) {
-	n, err := discover.ParseNode(ccnode)
+func (api *PublicWhisperAPI) MarkTrustedPeer(ctx context.Context, url string) (bool, error) {
+	n, err := cnode.ParseV4(url)
 	if err != nil {
 		return false, err
 	}
-	return true, api.w.AllowP2PMessagesFromPeer(n.ID[:])
+	return true, api.w.AllowP2PMessagesFromPeer(n.ID().Bytes())
 }
 
 func (api *PublicWhisperAPI) NewKeyPair(ctx context.Context) (string, error) {
@@ -231,11 +231,11 @@ func (api *PublicWhisperAPI) Post(ctx context.Context, req NewMessage) (hexutil.
 	}
 
 	if len(req.TargetPeer) > 0 {
-		n, err := discover.ParseNode(req.TargetPeer)
+		n, err := cnode.ParseV4(req.TargetPeer)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse target peer: %s", err)
 		}
-		err = api.w.SendP2PMessage(n.ID[:], env)
+		err = api.w.SendP2PMessage(n.ID().Bytes(), env)
 		if err == nil {
 			hash := env.Hash()
 			result = hash[:]

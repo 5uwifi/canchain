@@ -3,7 +3,7 @@ package p2p
 import (
 	"fmt"
 
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 )
 
 type Protocol struct {
@@ -17,7 +17,7 @@ type Protocol struct {
 
 	NodeInfo func() interface{}
 
-	PeerInfo func(id discover.NodeID) interface{}
+	PeerInfo func(id cnode.ID) interface{}
 }
 
 func (p Protocol) cap() Cap {

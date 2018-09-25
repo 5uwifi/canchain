@@ -11,6 +11,7 @@ import (
 
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/log4j"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/nat"
 	"github.com/5uwifi/canchain/lib/p2p/netutil"
 	"github.com/5uwifi/canchain/lib/rlp"
@@ -28,8 +29,9 @@ var (
 )
 
 const (
-	respTimeout = 500 * time.Millisecond
-	expiration  = 20 * time.Second
+	respTimeout    = 500 * time.Millisecond
+	expiration     = 20 * time.Second
+	bondExpiration = 24 * time.Hour
 
 	ntpFailureThreshold = 32
 	ntpWarningCooldown  = 10 * time.Minute
@@ -60,7 +62,7 @@ type (
 	}
 
 	findnode struct {
-		Target     NodeID
+		Target     encPubkey
 		Expiration uint64
 		Rest       []rlp.RawValue `rlp:"tail"`
 	}
@@ -75,7 +77,7 @@ type (
 		IP  net.IP
 		UDP uint16
 		TCP uint16
-		ID  NodeID
+		ID  encPubkey
 	}
 
 	rpcEndpoint struct {
@@ -93,7 +95,7 @@ func makeEndpoint(addr *net.UDPAddr, tcpPort uint16) rpcEndpoint {
 	return rpcEndpoint{IP: ip, UDP: uint16(addr.Port), TCP: tcpPort}
 }
 
-func (t *udp) nodeFromRPC(sender *net.UDPAddr, rn rpcNode) (*Node, error) {
+func (t *udp) nodeFromRPC(sender *net.UDPAddr, rn rpcNode) (*node, error) {
 	if rn.UDP <= 1024 {
 		return nil, errors.New("low port")
 	}
@@ -103,17 +105,26 @@ func (t *udp) nodeFromRPC(sender *net.UDPAddr, rn rpcNode) (*Node, error) {
 	if t.netrestrict != nil && !t.netrestrict.Contains(rn.IP) {
 		return nil, errors.New("not contained in netrestrict whitelist")
 	}
-	n := NewNode(rn.ID, rn.IP, rn.UDP, rn.TCP)
-	err := n.validateComplete()
+	key, err := decodePubkey(rn.ID)
+	if err != nil {
+		return nil, err
+	}
+	n := wrapNode(cnode.NewV4(key, rn.IP, int(rn.TCP), int(rn.UDP)))
+	err = n.ValidateComplete()
 	return n, err
 }
 
-func nodeToRPC(n *Node) rpcNode {
-	return rpcNode{ID: n.ID, IP: n.IP, UDP: n.UDP, TCP: n.TCP}
+func nodeToRPC(n *node) rpcNode {
+	var key ecdsa.PublicKey
+	var ekey encPubkey
+	if err := n.Load((*cnode.Secp256k1)(&key)); err == nil {
+		ekey = encodePubkey(&key)
+	}
+	return rpcNode{ID: ekey, IP: n.IP(), UDP: uint16(n.UDP()), TCP: uint16(n.TCP())}
 }
 
 type packet interface {
-	handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error
+	handle(t *udp, from *net.UDPAddr, fromKey encPubkey, mac []byte) error
 	name() string
 }
 
@@ -140,7 +151,7 @@ type udp struct {
 }
 
 type pending struct {
-	from  NodeID
+	from  cnode.ID
 	ptype byte
 
 	deadline time.Time
@@ -151,7 +162,7 @@ type pending struct {
 }
 
 type reply struct {
-	from    NodeID
+	from    cnode.ID
 	ptype   byte
 	data    interface{}
 	matched chan<- bool
@@ -168,7 +179,7 @@ type Config struct {
 	AnnounceAddr *net.UDPAddr
 	NodeDBPath   string
 	NetRestrict  *netutil.Netlist
-	Bootnodes    []*Node
+	Bootnodes    []*cnode.Node
 	Unhandled    chan<- ReadPacket
 }
 
@@ -182,6 +193,16 @@ func ListenUDP(c conn, cfg Config) (*Table, error) {
 }
 
 func newUDP(c conn, cfg Config) (*Table, *udp, error) {
+	realaddr := c.LocalAddr().(*net.UDPAddr)
+	if cfg.AnnounceAddr != nil {
+		realaddr = cfg.AnnounceAddr
+	}
+	self := cnode.NewV4(&cfg.PrivateKey.PublicKey, realaddr.IP, realaddr.Port, realaddr.Port)
+	db, err := cnode.OpenDB(cfg.NodeDBPath)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	udp := &udp{
 		conn:        c,
 		priv:        cfg.PrivateKey,
@@ -190,12 +211,8 @@ func newUDP(c conn, cfg Config) (*Table, *udp, error) {
 		gotreply:    make(chan reply),
 		addpending:  make(chan *pending),
 	}
-	realaddr := c.LocalAddr().(*net.UDPAddr)
-	if cfg.AnnounceAddr != nil {
-		realaddr = cfg.AnnounceAddr
-	}
 	udp.ourEndpoint = makeEndpoint(realaddr, uint16(realaddr.Port))
-	tab, err := newTable(udp, PubkeyID(&cfg.PrivateKey.PublicKey), realaddr, cfg.NodeDBPath, cfg.Bootnodes)
+	tab, err := newTable(udp, self, db, cfg.Bootnodes)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -209,13 +226,14 @@ func newUDP(c conn, cfg Config) (*Table, *udp, error) {
 func (t *udp) close() {
 	close(t.closing)
 	t.conn.Close()
+	t.db.Close()
 }
 
-func (t *udp) ping(toid NodeID, toaddr *net.UDPAddr) error {
+func (t *udp) ping(toid cnode.ID, toaddr *net.UDPAddr) error {
 	return <-t.sendPing(toid, toaddr, nil)
 }
 
-func (t *udp) sendPing(toid NodeID, toaddr *net.UDPAddr, callback func()) <-chan error {
+func (t *udp) sendPing(toid cnode.ID, toaddr *net.UDPAddr, callback func()) <-chan error {
 	req := &ping{
 		Version:    4,
 		From:       t.ourEndpoint,
@@ -239,17 +257,17 @@ func (t *udp) sendPing(toid NodeID, toaddr *net.UDPAddr, callback func()) <-chan
 	return errc
 }
 
-func (t *udp) waitping(from NodeID) error {
+func (t *udp) waitping(from cnode.ID) error {
 	return <-t.pending(from, pingPacket, func(interface{}) bool { return true })
 }
 
-func (t *udp) findnode(toid NodeID, toaddr *net.UDPAddr, target NodeID) ([]*Node, error) {
-	if time.Since(t.db.lastPingReceived(toid)) > nodeDBNodeExpiration {
+func (t *udp) findnode(toid cnode.ID, toaddr *net.UDPAddr, target encPubkey) ([]*node, error) {
+	if time.Since(t.db.LastPingReceived(toid)) > bondExpiration {
 		t.ping(toid, toaddr)
 		t.waitping(toid)
 	}
 
-	nodes := make([]*Node, 0, bucketSize)
+	nodes := make([]*node, 0, bucketSize)
 	nreceived := 0
 	errc := t.pending(toid, neighborsPacket, func(r interface{}) bool {
 		reply := r.(*neighbors)
@@ -271,7 +289,7 @@ func (t *udp) findnode(toid NodeID, toaddr *net.UDPAddr, target NodeID) ([]*Node
 	return nodes, <-errc
 }
 
-func (t *udp) pending(id NodeID, ptype byte, callback func(interface{}) bool) <-chan error {
+func (t *udp) pending(id cnode.ID, ptype byte, callback func(interface{}) bool) <-chan error {
 	ch := make(chan error, 1)
 	p := &pending{from: id, ptype: ptype, callback: callback, errc: ch}
 	select {
@@ -282,7 +300,7 @@ func (t *udp) pending(id NodeID, ptype byte, callback func(interface{}) bool) <-
 	return ch
 }
 
-func (t *udp) handleReply(from NodeID, ptype byte, req packet) bool {
+func (t *udp) handleReply(from cnode.ID, ptype byte, req packet) bool {
 	matched := make(chan bool, 1)
 	select {
 	case t.gotreply <- reply{from, ptype, req, matched}:
@@ -469,19 +487,20 @@ func (t *udp) handlePacket(from *net.UDPAddr, buf []byte) error {
 	return err
 }
 
-func decodePacket(buf []byte) (packet, NodeID, []byte, error) {
+func decodePacket(buf []byte) (packet, encPubkey, []byte, error) {
 	if len(buf) < headSize+1 {
-		return nil, NodeID{}, nil, errPacketTooSmall
+		return nil, encPubkey{}, nil, errPacketTooSmall
 	}
 	hash, sig, sigdata := buf[:macSize], buf[macSize:headSize], buf[headSize:]
 	shouldhash := crypto.Keccak256(buf[macSize:])
 	if !bytes.Equal(hash, shouldhash) {
-		return nil, NodeID{}, nil, errBadHash
+		return nil, encPubkey{}, nil, errBadHash
 	}
-	fromID, err := recoverNodeID(crypto.Keccak256(buf[headSize:]), sig)
+	fromKey, err := recoverNodeKey(crypto.Keccak256(buf[headSize:]), sig)
 	if err != nil {
-		return nil, NodeID{}, hash, err
+		return nil, fromKey, hash, err
 	}
+
 	var req packet
 	switch ptype := sigdata[0]; ptype {
 	case pingPacket:
@@ -493,57 +512,62 @@ func decodePacket(buf []byte) (packet, NodeID, []byte, error) {
 	case neighborsPacket:
 		req = new(neighbors)
 	default:
-		return nil, fromID, hash, fmt.Errorf("unknown type: %d", ptype)
+		return nil, fromKey, hash, fmt.Errorf("unknown type: %d", ptype)
 	}
 	s := rlp.NewStream(bytes.NewReader(sigdata[1:]), 0)
 	err = s.Decode(req)
-	return req, fromID, hash, err
+	return req, fromKey, hash, err
 }
 
-func (req *ping) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error {
+func (req *ping) handle(t *udp, from *net.UDPAddr, fromKey encPubkey, mac []byte) error {
 	if expired(req.Expiration) {
 		return errExpired
+	}
+	key, err := decodePubkey(fromKey)
+	if err != nil {
+		return fmt.Errorf("invalid public key: %v", err)
 	}
 	t.send(from, pongPacket, &pong{
 		To:         makeEndpoint(from, req.From.TCP),
 		ReplyTok:   mac,
 		Expiration: uint64(time.Now().Add(expiration).Unix()),
 	})
-	t.handleReply(fromID, pingPacket, req)
-
-	n := NewNode(fromID, from.IP, uint16(from.Port), req.From.TCP)
-	if time.Since(t.db.lastPongReceived(fromID)) > nodeDBNodeExpiration {
-		t.sendPing(fromID, from, func() { t.addThroughPing(n) })
+	n := wrapNode(cnode.NewV4(key, from.IP, int(req.From.TCP), from.Port))
+	t.handleReply(n.ID(), pingPacket, req)
+	if time.Since(t.db.LastPongReceived(n.ID())) > bondExpiration {
+		t.sendPing(n.ID(), from, func() { t.addThroughPing(n) })
 	} else {
 		t.addThroughPing(n)
 	}
-	t.db.updateLastPingReceived(fromID, time.Now())
+	t.db.UpdateLastPingReceived(n.ID(), time.Now())
 	return nil
 }
 
 func (req *ping) name() string { return "PING/v4" }
 
-func (req *pong) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error {
+func (req *pong) handle(t *udp, from *net.UDPAddr, fromKey encPubkey, mac []byte) error {
 	if expired(req.Expiration) {
 		return errExpired
 	}
+	fromID := fromKey.id()
 	if !t.handleReply(fromID, pongPacket, req) {
 		return errUnsolicitedReply
 	}
-	t.db.updateLastPongReceived(fromID, time.Now())
+	t.db.UpdateLastPongReceived(fromID, time.Now())
 	return nil
 }
 
 func (req *pong) name() string { return "PONG/v4" }
 
-func (req *findnode) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error {
+func (req *findnode) handle(t *udp, from *net.UDPAddr, fromKey encPubkey, mac []byte) error {
 	if expired(req.Expiration) {
 		return errExpired
 	}
-	if !t.db.hasBond(fromID) {
+	fromID := fromKey.id()
+	if time.Since(t.db.LastPongReceived(fromID)) > bondExpiration {
 		return errUnknownNode
 	}
-	target := crypto.Keccak256Hash(req.Target[:])
+	target := cnode.ID(crypto.Keccak256Hash(req.Target[:]))
 	t.mutex.Lock()
 	closest := t.closest(target, bucketSize).entries
 	t.mutex.Unlock()
@@ -551,7 +575,7 @@ func (req *findnode) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte
 	p := neighbors{Expiration: uint64(time.Now().Add(expiration).Unix())}
 	var sent bool
 	for _, n := range closest {
-		if netutil.CheckRelayIP(from.IP, n.IP) == nil {
+		if netutil.CheckRelayIP(from.IP, n.IP()) == nil {
 			p.Nodes = append(p.Nodes, nodeToRPC(n))
 		}
 		if len(p.Nodes) == maxNeighbors {
@@ -568,11 +592,11 @@ func (req *findnode) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte
 
 func (req *findnode) name() string { return "FINDNODE/v4" }
 
-func (req *neighbors) handle(t *udp, from *net.UDPAddr, fromID NodeID, mac []byte) error {
+func (req *neighbors) handle(t *udp, from *net.UDPAddr, fromKey encPubkey, mac []byte) error {
 	if expired(req.Expiration) {
 		return errExpired
 	}
-	if !t.handleReply(fromID, neighborsPacket, req) {
+	if !t.handleReply(fromKey.id(), neighborsPacket, req) {
 		return errUnsolicitedReply
 	}
 	return nil

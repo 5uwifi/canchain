@@ -165,9 +165,15 @@ func (r *sentReq) stateRequesting() reqStateFn {
 				r.stop(light.ErrNoPeers)
 				return nil
 			}
-		case rpSoftTimeout, rpDeliveredInvalid:
+		case rpSoftTimeout:
 			go r.tryRequest()
 			r.lastReqQueued = true
+			return r.stateRequesting
+		case rpDeliveredInvalid:
+			if !r.lastReqQueued && r.lastReqSentTo == nil {
+				go r.tryRequest()
+				r.lastReqQueued = true
+			}
 			return r.stateRequesting
 		case rpDeliveredValid:
 			r.stop(nil)

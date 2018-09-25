@@ -18,7 +18,7 @@ import (
 
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 	"github.com/5uwifi/canchain/lib/rlp"
@@ -31,7 +31,7 @@ type ProtocolTester struct {
 	network *simulations.Network
 }
 
-func NewProtocolTester(t *testing.T, id discover.NodeID, n int, run func(*p2p.Peer, p2p.MsgReadWriter) error) *ProtocolTester {
+func NewProtocolTester(t *testing.T, id cnode.ID, n int, run func(*p2p.Peer, p2p.MsgReadWriter) error) *ProtocolTester {
 	services := adapters.Services{
 		"test": func(ctx *adapters.ServiceContext) (node.Service, error) {
 			return &testNode{run}, nil
@@ -55,17 +55,17 @@ func NewProtocolTester(t *testing.T, id discover.NodeID, n int, run func(*p2p.Pe
 
 	node := net.GetNode(id).Node.(*adapters.SimNode)
 	peers := make([]*adapters.NodeConfig, n)
-	peerIDs := make([]discover.NodeID, n)
+	nodes := make([]*cnode.Node, n)
 	for i := 0; i < n; i++ {
 		peers[i] = adapters.RandomNodeConfig()
 		peers[i].Services = []string{"mock"}
-		peerIDs[i] = peers[i].ID
+		nodes[i] = peers[i].Node()
 	}
 	events := make(chan *p2p.PeerEvent, 1000)
 	node.SubscribeEvents(events)
 	ps := &ProtocolSession{
 		Server:  node.Server(),
-		IDs:     peerIDs,
+		Nodes:   nodes,
 		adapter: adapter,
 		events:  events,
 	}
@@ -84,7 +84,7 @@ func (t *ProtocolTester) Stop() error {
 	return nil
 }
 
-func (t *ProtocolTester) Connect(selfID discover.NodeID, peers ...*adapters.NodeConfig) {
+func (t *ProtocolTester) Connect(selfID cnode.ID, peers ...*adapters.NodeConfig) {
 	for _, peer := range peers {
 		log4j.Trace(fmt.Sprintf("start node %v", peer.ID))
 		if _, err := t.network.NewNodeWithConfig(peer); err != nil {

@@ -8,7 +8,7 @@ import (
 
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 )
 
@@ -16,7 +16,7 @@ var errTimedOut = errors.New("timed out")
 
 type ProtocolSession struct {
 	Server  *p2p.Server
-	IDs     []discover.NodeID
+	Nodes   []*cnode.Node
 	adapter *adapters.SimAdapter
 	events  chan *p2p.PeerEvent
 }
@@ -31,26 +31,26 @@ type Exchange struct {
 type Trigger struct {
 	Msg     interface{}
 	Code    uint64
-	Peer    discover.NodeID
+	Peer    cnode.ID
 	Timeout time.Duration
 }
 
 type Expect struct {
 	Msg     interface{}
 	Code    uint64
-	Peer    discover.NodeID
+	Peer    cnode.ID
 	Timeout time.Duration
 }
 
 type Disconnect struct {
-	Peer  discover.NodeID
+	Peer  cnode.ID
 	Error error
 }
 
 func (s *ProtocolSession) trigger(trig Trigger) error {
 	simNode, ok := s.adapter.GetNode(trig.Peer)
 	if !ok {
-		return fmt.Errorf("trigger: peer %v does not exist (1- %v)", trig.Peer, len(s.IDs))
+		return fmt.Errorf("trigger: peer %v does not exist (1- %v)", trig.Peer, len(s.Nodes))
 	}
 	mockNode, ok := simNode.Services()[0].(*mockNode)
 	if !ok {
@@ -78,7 +78,7 @@ func (s *ProtocolSession) trigger(trig Trigger) error {
 }
 
 func (s *ProtocolSession) expect(exps []Expect) error {
-	peerExpects := make(map[discover.NodeID][]Expect)
+	peerExpects := make(map[cnode.ID][]Expect)
 	for _, exp := range exps {
 		if exp.Msg == nil {
 			return errors.New("no message to expect")
@@ -86,11 +86,11 @@ func (s *ProtocolSession) expect(exps []Expect) error {
 		peerExpects[exp.Peer] = append(peerExpects[exp.Peer], exp)
 	}
 
-	mockNodes := make(map[discover.NodeID]*mockNode)
+	mockNodes := make(map[cnode.ID]*mockNode)
 	for nodeID := range peerExpects {
 		simNode, ok := s.adapter.GetNode(nodeID)
 		if !ok {
-			return fmt.Errorf("trigger: peer %v does not exist (1- %v)", nodeID, len(s.IDs))
+			return fmt.Errorf("trigger: peer %v does not exist (1- %v)", nodeID, len(s.Nodes))
 		}
 		mockNode, ok := simNode.Services()[0].(*mockNode)
 		if !ok {
@@ -201,7 +201,7 @@ func (s *ProtocolSession) testExchange(e Exchange) error {
 }
 
 func (s *ProtocolSession) TestDisconnected(disconnects ...*Disconnect) error {
-	expects := make(map[discover.NodeID]error)
+	expects := make(map[cnode.ID]error)
 	for _, disconnect := range disconnects {
 		expects[disconnect.Peer] = disconnect.Error
 	}

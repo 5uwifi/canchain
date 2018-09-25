@@ -11,7 +11,7 @@ import (
 	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 )
 
@@ -26,7 +26,7 @@ type Network struct {
 	NetworkConfig
 
 	Nodes   []*Node `json:"nodes"`
-	nodeMap map[discover.NodeID]int
+	nodeMap map[cnode.ID]int
 
 	Conns   []*Conn `json:"conns"`
 	connMap map[string]int
@@ -41,7 +41,7 @@ func NewNetwork(nodeAdapter adapters.NodeAdapter, conf *NetworkConfig) *Network 
 	return &Network{
 		NetworkConfig: *conf,
 		nodeAdapter:   nodeAdapter,
-		nodeMap:       make(map[discover.NodeID]int),
+		nodeMap:       make(map[cnode.ID]int),
 		connMap:       make(map[string]int),
 		quitc:         make(chan struct{}),
 	}
@@ -56,7 +56,7 @@ func (net *Network) NewNodeWithConfig(conf *adapters.NodeConfig) (*Node, error) 
 	defer net.lock.Unlock()
 
 	if conf.Reachable == nil {
-		conf.Reachable = func(otherID discover.NodeID) bool {
+		conf.Reachable = func(otherID cnode.ID) bool {
 			_, err := net.InitConn(conf.ID, otherID)
 			if err != nil && bytes.Compare(conf.ID.Bytes(), otherID.Bytes()) < 0 {
 				return false
@@ -121,11 +121,11 @@ func (net *Network) StopAll() error {
 	return nil
 }
 
-func (net *Network) Start(id discover.NodeID) error {
+func (net *Network) Start(id cnode.ID) error {
 	return net.startWithSnapshots(id, nil)
 }
 
-func (net *Network) startWithSnapshots(id discover.NodeID, snapshots map[string][]byte) error {
+func (net *Network) startWithSnapshots(id cnode.ID, snapshots map[string][]byte) error {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	node := net.getNode(id)
@@ -158,7 +158,7 @@ func (net *Network) startWithSnapshots(id discover.NodeID, snapshots map[string]
 	return nil
 }
 
-func (net *Network) watchPeerEvents(id discover.NodeID, events chan *p2p.PeerEvent, sub event.Subscription) {
+func (net *Network) watchPeerEvents(id cnode.ID, events chan *p2p.PeerEvent, sub event.Subscription) {
 	defer func() {
 		sub.Unsubscribe()
 
@@ -204,7 +204,7 @@ func (net *Network) watchPeerEvents(id discover.NodeID, events chan *p2p.PeerEve
 	}
 }
 
-func (net *Network) Stop(id discover.NodeID) error {
+func (net *Network) Stop(id cnode.ID) error {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	node := net.getNode(id)
@@ -224,7 +224,7 @@ func (net *Network) Stop(id discover.NodeID) error {
 	return nil
 }
 
-func (net *Network) Connect(oneID, otherID discover.NodeID) error {
+func (net *Network) Connect(oneID, otherID cnode.ID) error {
 	log4j.Debug(fmt.Sprintf("connecting %s to %s", oneID, otherID))
 	conn, err := net.InitConn(oneID, otherID)
 	if err != nil {
@@ -238,7 +238,7 @@ func (net *Network) Connect(oneID, otherID discover.NodeID) error {
 	return client.Call(nil, "admin_addPeer", string(conn.other.Addr()))
 }
 
-func (net *Network) Disconnect(oneID, otherID discover.NodeID) error {
+func (net *Network) Disconnect(oneID, otherID cnode.ID) error {
 	conn := net.GetConn(oneID, otherID)
 	if conn == nil {
 		return fmt.Errorf("connection between %v and %v does not exist", oneID, otherID)
@@ -254,7 +254,7 @@ func (net *Network) Disconnect(oneID, otherID discover.NodeID) error {
 	return client.Call(nil, "admin_removePeer", string(conn.other.Addr()))
 }
 
-func (net *Network) DidConnect(one, other discover.NodeID) error {
+func (net *Network) DidConnect(one, other cnode.ID) error {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	conn, err := net.getOrCreateConn(one, other)
@@ -269,7 +269,7 @@ func (net *Network) DidConnect(one, other discover.NodeID) error {
 	return nil
 }
 
-func (net *Network) DidDisconnect(one, other discover.NodeID) error {
+func (net *Network) DidDisconnect(one, other cnode.ID) error {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	conn := net.getConn(one, other)
@@ -285,7 +285,7 @@ func (net *Network) DidDisconnect(one, other discover.NodeID) error {
 	return nil
 }
 
-func (net *Network) DidSend(sender, receiver discover.NodeID, proto string, code uint64) error {
+func (net *Network) DidSend(sender, receiver cnode.ID, proto string, code uint64) error {
 	msg := &Msg{
 		One:      sender,
 		Other:    receiver,
@@ -297,7 +297,7 @@ func (net *Network) DidSend(sender, receiver discover.NodeID, proto string, code
 	return nil
 }
 
-func (net *Network) DidReceive(sender, receiver discover.NodeID, proto string, code uint64) error {
+func (net *Network) DidReceive(sender, receiver cnode.ID, proto string, code uint64) error {
 	msg := &Msg{
 		One:      sender,
 		Other:    receiver,
@@ -309,7 +309,7 @@ func (net *Network) DidReceive(sender, receiver discover.NodeID, proto string, c
 	return nil
 }
 
-func (net *Network) GetNode(id discover.NodeID) *Node {
+func (net *Network) GetNode(id cnode.ID) *Node {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	return net.getNode(id)
@@ -329,7 +329,7 @@ func (net *Network) GetNodes() (nodes []*Node) {
 	return nodes
 }
 
-func (net *Network) getNode(id discover.NodeID) *Node {
+func (net *Network) getNode(id cnode.ID) *Node {
 	i, found := net.nodeMap[id]
 	if !found {
 		return nil
@@ -346,19 +346,19 @@ func (net *Network) getNodeByName(name string) *Node {
 	return nil
 }
 
-func (net *Network) GetConn(oneID, otherID discover.NodeID) *Conn {
+func (net *Network) GetConn(oneID, otherID cnode.ID) *Conn {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	return net.getConn(oneID, otherID)
 }
 
-func (net *Network) GetOrCreateConn(oneID, otherID discover.NodeID) (*Conn, error) {
+func (net *Network) GetOrCreateConn(oneID, otherID cnode.ID) (*Conn, error) {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	return net.getOrCreateConn(oneID, otherID)
 }
 
-func (net *Network) getOrCreateConn(oneID, otherID discover.NodeID) (*Conn, error) {
+func (net *Network) getOrCreateConn(oneID, otherID cnode.ID) (*Conn, error) {
 	if conn := net.getConn(oneID, otherID); conn != nil {
 		return conn, nil
 	}
@@ -383,7 +383,7 @@ func (net *Network) getOrCreateConn(oneID, otherID discover.NodeID) (*Conn, erro
 	return conn, nil
 }
 
-func (net *Network) getConn(oneID, otherID discover.NodeID) *Conn {
+func (net *Network) getConn(oneID, otherID cnode.ID) *Conn {
 	label := ConnLabel(oneID, otherID)
 	i, found := net.connMap[label]
 	if !found {
@@ -392,7 +392,7 @@ func (net *Network) getConn(oneID, otherID discover.NodeID) *Conn {
 	return net.Conns[i]
 }
 
-func (net *Network) InitConn(oneID, otherID discover.NodeID) (*Conn, error) {
+func (net *Network) InitConn(oneID, otherID cnode.ID) (*Conn, error) {
 	net.lock.Lock()
 	defer net.lock.Unlock()
 	if oneID == otherID {
@@ -434,7 +434,7 @@ func (net *Network) Reset() {
 	defer net.lock.Unlock()
 
 	net.connMap = make(map[string]int)
-	net.nodeMap = make(map[discover.NodeID]int)
+	net.nodeMap = make(map[cnode.ID]int)
 
 	net.Nodes = nil
 	net.Conns = nil
@@ -448,7 +448,7 @@ type Node struct {
 	Up bool `json:"up"`
 }
 
-func (n *Node) ID() discover.NodeID {
+func (n *Node) ID() cnode.ID {
 	return n.Config.ID
 }
 
@@ -478,9 +478,9 @@ func (n *Node) MarshalJSON() ([]byte, error) {
 }
 
 type Conn struct {
-	One discover.NodeID `json:"one"`
+	One cnode.ID `json:"one"`
 
-	Other discover.NodeID `json:"other"`
+	Other cnode.ID `json:"other"`
 
 	Up        bool `json:"up"`
 	initiated time.Time
@@ -504,19 +504,19 @@ func (c *Conn) String() string {
 }
 
 type Msg struct {
-	One      discover.NodeID `json:"one"`
-	Other    discover.NodeID `json:"other"`
-	Protocol string          `json:"protocol"`
-	Code     uint64          `json:"code"`
-	Received bool            `json:"received"`
+	One      cnode.ID `json:"one"`
+	Other    cnode.ID `json:"other"`
+	Protocol string   `json:"protocol"`
+	Code     uint64   `json:"code"`
+	Received bool     `json:"received"`
 }
 
 func (m *Msg) String() string {
 	return fmt.Sprintf("Msg(%d) %v->%v", m.Code, m.One.TerminalString(), m.Other.TerminalString())
 }
 
-func ConnLabel(source, target discover.NodeID) string {
-	var first, second discover.NodeID
+func ConnLabel(source, target cnode.ID) string {
+	var first, second cnode.ID
 	if bytes.Compare(source.Bytes(), target.Bytes()) > 0 {
 		first = target
 		second = source

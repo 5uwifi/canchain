@@ -16,15 +16,26 @@ const (
 	TxGasContractCreation uint64 = 53000
 	TxDataZeroGas         uint64 = 4
 	QuadCoeffDiv          uint64 = 512
-	SstoreSetGas          uint64 = 20000
 	LogDataGas            uint64 = 8
 	CallStipend           uint64 = 2300
 
-	Sha3Gas          uint64 = 30
-	Sha3WordGas      uint64 = 6
-	SstoreResetGas   uint64 = 5000
-	SstoreClearGas   uint64 = 5000
-	SstoreRefundGas  uint64 = 15000
+	Sha3Gas     uint64 = 30
+	Sha3WordGas uint64 = 6
+
+	SstoreSetGas    uint64 = 20000
+	SstoreResetGas  uint64 = 5000
+	SstoreClearGas  uint64 = 5000
+	SstoreRefundGas uint64 = 15000
+
+	NetSstoreNoopGas  uint64 = 200
+	NetSstoreInitGas  uint64 = 20000
+	NetSstoreCleanGas uint64 = 5000
+	NetSstoreDirtyGas uint64 = 200
+
+	NetSstoreClearRefund      uint64 = 15000
+	NetSstoreResetRefund      uint64 = 4800
+	NetSstoreResetClearRefund uint64 = 19800
+
 	JumpdestGas      uint64 = 1
 	EpochDuration    uint64 = 30000
 	CallGas          uint64 = 40

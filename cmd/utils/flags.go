@@ -31,7 +31,7 @@ import (
 	"github.com/5uwifi/canchain/lib/metrics"
 	"github.com/5uwifi/canchain/lib/metrics/influxdb"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/discv5"
 	"github.com/5uwifi/canchain/lib/p2p/nat"
 	"github.com/5uwifi/canchain/lib/p2p/netutil"
@@ -620,9 +620,9 @@ func setBootstrapNodes(ctx *cli.Context, cfg *p2p.Config) {
 		return
 	}
 
-	cfg.BootstrapNodes = make([]*discover.Node, 0, len(urls))
+	cfg.BootstrapNodes = make([]*cnode.Node, 0, len(urls))
 	for _, url := range urls {
-		node, err := discover.ParseNode(url)
+		node, err := cnode.ParseV4(url)
 		if err != nil {
 			log4j.Crit("Bootstrap URL invalid", "ccnode", url, "err", err)
 		}

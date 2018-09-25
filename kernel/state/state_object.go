@@ -49,7 +49,7 @@ type stateObject struct {
 	trie Trie
 	code Code
 
-	cachedStorage Storage
+	originStorage Storage
 	dirtyStorage  Storage
 
 	dirtyCode bool
@@ -80,7 +80,7 @@ func newObject(db *StateDB, address common.Address, data Account) *stateObject {
 		address:       address,
 		addrHash:      crypto.Keccak256Hash(address[:]),
 		data:          data,
-		cachedStorage: make(Storage),
+		originStorage: make(Storage),
 		dirtyStorage:  make(Storage),
 	}
 }
@@ -121,8 +121,16 @@ func (c *stateObject) getTrie(db Database) Trie {
 }
 
 func (self *stateObject) GetState(db Database, key common.Hash) common.Hash {
-	value, exists := self.cachedStorage[key]
-	if exists {
+	value, dirty := self.dirtyStorage[key]
+	if dirty {
+		return value
+	}
+	return self.GetCommittedState(db, key)
+}
+
+func (self *stateObject) GetCommittedState(db Database, key common.Hash) common.Hash {
+	value, cached := self.originStorage[key]
+	if cached {
 		return value
 	}
 	enc, err := self.getTrie(db).TryGet(key[:])
@@ -137,21 +145,24 @@ func (self *stateObject) GetState(db Database, key common.Hash) common.Hash {
 		}
 		value.SetBytes(content)
 	}
-	self.cachedStorage[key] = value
+	self.originStorage[key] = value
 	return value
 }
 
 func (self *stateObject) SetState(db Database, key, value common.Hash) {
+	prev := self.GetState(db, key)
+	if prev == value {
+		return
+	}
 	self.db.journal.append(storageChange{
 		account:  &self.address,
 		key:      key,
-		prevalue: self.GetState(db, key),
+		prevalue: prev,
 	})
 	self.setState(key, value)
 }
 
 func (self *stateObject) setState(key, value common.Hash) {
-	self.cachedStorage[key] = value
 	self.dirtyStorage[key] = value
 }
 
@@ -159,6 +170,12 @@ func (self *stateObject) updateTrie(db Database) Trie {
 	tr := self.getTrie(db)
 	for key, value := range self.dirtyStorage {
 		delete(self.dirtyStorage, key)
+
+		if value == self.originStorage[key] {
+			continue
+		}
+		self.originStorage[key] = value
+
 		if (value == common.Hash{}) {
 			self.setError(tr.TryDelete(key[:]))
 			continue
@@ -225,7 +242,7 @@ func (self *stateObject) deepCopy(db *StateDB) *stateObject {
 	}
 	stateObject.code = self.code
 	stateObject.dirtyStorage = self.dirtyStorage.Copy()
-	stateObject.cachedStorage = self.dirtyStorage.Copy()
+	stateObject.originStorage = self.originStorage.Copy()
 	stateObject.suicided = self.suicided
 	stateObject.dirtyCode = self.dirtyCode
 	stateObject.deleted = self.deleted

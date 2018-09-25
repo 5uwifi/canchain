@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 )
 
@@ -19,7 +19,7 @@ func TestNetworkSimulation(t *testing.T) {
 	})
 	defer network.Shutdown()
 	nodeCount := 20
-	ids := make([]discover.NodeID, nodeCount)
+	ids := make([]cnode.ID, nodeCount)
 	for i := 0; i < nodeCount; i++ {
 		conf := adapters.RandomNodeConfig()
 		node, err := network.NewNodeWithConfig(conf)
@@ -41,7 +41,7 @@ func TestNetworkSimulation(t *testing.T) {
 		}
 		return nil
 	}
-	check := func(ctx context.Context, id discover.NodeID) (bool, error) {
+	check := func(ctx context.Context, id cnode.ID) (bool, error) {
 		select {
 		case <-ctx.Done():
 			return false, ctx.Err()
@@ -75,7 +75,7 @@ func TestNetworkSimulation(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	trigger := make(chan discover.NodeID)
+	trigger := make(chan cnode.ID)
 	go triggerChecks(ctx, ids, trigger, 100*time.Millisecond)
 
 	result := NewSimulation(network).Run(ctx, &Step{
@@ -112,7 +112,7 @@ func TestNetworkSimulation(t *testing.T) {
 	}
 }
 
-func triggerChecks(ctx context.Context, ids []discover.NodeID, trigger chan discover.NodeID, interval time.Duration) {
+func triggerChecks(ctx context.Context, ids []cnode.ID, trigger chan cnode.ID, interval time.Duration) {
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 	for {

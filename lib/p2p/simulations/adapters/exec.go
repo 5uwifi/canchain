@@ -21,7 +21,7 @@ import (
 	"github.com/docker/docker/pkg/reexec"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/rpc"
 	"golang.org/x/net/websocket"
@@ -30,13 +30,13 @@ import (
 type ExecAdapter struct {
 	BaseDir string
 
-	nodes map[discover.NodeID]*ExecNode
+	nodes map[cnode.ID]*ExecNode
 }
 
 func NewExecAdapter(baseDir string) *ExecAdapter {
 	return &ExecAdapter{
 		BaseDir: baseDir,
-		nodes:   make(map[discover.NodeID]*ExecNode),
+		nodes:   make(map[cnode.ID]*ExecNode),
 	}
 }
 
@@ -87,7 +87,7 @@ func (e *ExecAdapter) NewNode(config *NodeConfig) (Node, error) {
 }
 
 type ExecNode struct {
-	ID     discover.NodeID
+	ID     cnode.ID
 	Dir    string
 	Config *execNodeConfig
 	Cmd    *exec.Cmd
@@ -412,7 +412,7 @@ type wsRPCDialer struct {
 	addrs map[string]string
 }
 
-func (w *wsRPCDialer) DialRPC(id discover.NodeID) (*rpc.Client, error) {
+func (w *wsRPCDialer) DialRPC(id cnode.ID) (*rpc.Client, error) {
 	addr, ok := w.addrs[id.String()]
 	if !ok {
 		return nil, fmt.Errorf("unknown node: %s", id)

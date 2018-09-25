@@ -13,8 +13,7 @@ import (
 const SizeLimit = 300
 
 var (
-	errNoID           = errors.New("unknown or unspecified identity scheme")
-	errInvalidSig     = errors.New("invalid signature")
+	ErrInvalidSig     = errors.New("invalid signature on node record")
 	errNotSorted      = errors.New("record key/value pairs are not sorted by key")
 	errDuplicateKey   = errors.New("record contains duplicate key")
 	errIncompletePair = errors.New("record contains incomplete k/v pair")
@@ -22,6 +21,29 @@ var (
 	errEncodeUnsigned = errors.New("can't encode unsigned record")
 	errNotFound       = errors.New("no such key in record")
 )
+
+type IdentityScheme interface {
+	Verify(r *Record, sig []byte) error
+	NodeAddr(r *Record) []byte
+}
+
+type SchemeMap map[string]IdentityScheme
+
+func (m SchemeMap) Verify(r *Record, sig []byte) error {
+	s := m[r.IdentityScheme()]
+	if s == nil {
+		return ErrInvalidSig
+	}
+	return s.Verify(r, sig)
+}
+
+func (m SchemeMap) NodeAddr(r *Record) []byte {
+	s := m[r.IdentityScheme()]
+	if s == nil {
+		return nil
+	}
+	return s.NodeAddr(r)
+}
 
 type Record struct {
 	seq       uint64
@@ -33,10 +55,6 @@ type Record struct {
 type pair struct {
 	k string
 	v rlp.RawValue
-}
-
-func (r *Record) Signed() bool {
-	return r.signature != nil
 }
 
 func (r *Record) Seq() uint64 {
@@ -93,7 +111,7 @@ func (r *Record) invalidate() {
 }
 
 func (r Record) EncodeRLP(w io.Writer) error {
-	if !r.Signed() {
+	if r.signature == nil {
 		return errEncodeUnsigned
 	}
 	_, err := w.Write(r.raw)
@@ -101,24 +119,33 @@ func (r Record) EncodeRLP(w io.Writer) error {
 }
 
 func (r *Record) DecodeRLP(s *rlp.Stream) error {
-	raw, err := s.Raw()
+	dec, raw, err := decodeRecord(s)
 	if err != nil {
 		return err
 	}
+	*r = dec
+	r.raw = raw
+	return nil
+}
+
+func decodeRecord(s *rlp.Stream) (dec Record, raw []byte, err error) {
+	raw, err = s.Raw()
+	if err != nil {
+		return dec, raw, err
+	}
 	if len(raw) > SizeLimit {
-		return errTooBig
+		return dec, raw, errTooBig
 	}
 
-	dec := Record{raw: raw}
 	s = rlp.NewStream(bytes.NewReader(raw), 0)
 	if _, err := s.List(); err != nil {
-		return err
+		return dec, raw, err
 	}
 	if err = s.Decode(&dec.signature); err != nil {
-		return err
+		return dec, raw, err
 	}
 	if err = s.Decode(&dec.seq); err != nil {
-		return err
+		return dec, raw, err
 	}
 	var prevkey string
 	for i := 0; ; i++ {
@@ -127,65 +154,56 @@ func (r *Record) DecodeRLP(s *rlp.Stream) error {
 			if err == rlp.EOL {
 				break
 			}
-			return err
+			return dec, raw, err
 		}
 		if err := s.Decode(&kv.v); err != nil {
 			if err == rlp.EOL {
-				return errIncompletePair
+				return dec, raw, errIncompletePair
 			}
-			return err
+			return dec, raw, err
 		}
 		if i > 0 {
 			if kv.k == prevkey {
-				return errDuplicateKey
+				return dec, raw, errDuplicateKey
 			}
 			if kv.k < prevkey {
-				return errNotSorted
+				return dec, raw, errNotSorted
 			}
 		}
 		dec.pairs = append(dec.pairs, kv)
 		prevkey = kv.k
 	}
-	if err := s.ListEnd(); err != nil {
-		return err
-	}
-
-	_, scheme := dec.idScheme()
-	if scheme == nil {
-		return errNoID
-	}
-	if err := scheme.Verify(&dec, dec.signature); err != nil {
-		return err
-	}
-	*r = dec
-	return nil
+	return dec, raw, s.ListEnd()
 }
 
-func (r *Record) NodeAddr() []byte {
-	_, scheme := r.idScheme()
-	if scheme == nil {
-		return nil
-	}
-	return scheme.NodeAddr(r)
+func (r *Record) IdentityScheme() string {
+	var id ID
+	r.Load(&id)
+	return string(id)
 }
 
-func (r *Record) SetSig(idscheme string, sig []byte) error {
-	id, s := r.idScheme()
-	if s == nil {
-		panic(errNoID)
-	}
-	if id != idscheme {
-		panic(fmt.Errorf("identity scheme mismatch in Sign: record has %s, want %s", id, idscheme))
-	}
+func (r *Record) VerifySignature(s IdentityScheme) error {
+	return s.Verify(r, r.signature)
+}
 
-	if err := s.Verify(r, sig); err != nil {
-		return err
+func (r *Record) SetSig(s IdentityScheme, sig []byte) error {
+	switch {
+	case s == nil && sig != nil:
+		panic("enr: invalid call to SetSig with non-nil signature but nil scheme")
+	case s != nil && sig == nil:
+		panic("enr: invalid call to SetSig with nil signature but non-nil scheme")
+	case s != nil:
+		if err := s.Verify(r, sig); err != nil {
+			return err
+		}
+		raw, err := r.encode(sig)
+		if err != nil {
+			return err
+		}
+		r.signature, r.raw = sig, raw
+	default:
+		r.signature, r.raw = nil, nil
 	}
-	raw, err := r.encode(sig)
-	if err != nil {
-		return err
-	}
-	r.signature, r.raw = sig, raw
 	return nil
 }
 
@@ -208,12 +226,4 @@ func (r *Record) encode(sig []byte) (raw []byte, err error) {
 		return nil, errTooBig
 	}
 	return raw, nil
-}
-
-func (r *Record) idScheme() (string, IdentityScheme) {
-	var id ID
-	if err := r.Load(&id); err != nil {
-		return "", nil
-	}
-	return string(id), FindIdentityScheme(string(id))
 }

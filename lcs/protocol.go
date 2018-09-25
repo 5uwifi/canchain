@@ -1,9 +1,7 @@
 package lcs
 
 import (
-	"bytes"
 	"crypto/ecdsa"
-	"crypto/elliptic"
 	"errors"
 	"fmt"
 	"io"
@@ -13,7 +11,7 @@ import (
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/lib/crypto"
-	"github.com/5uwifi/canchain/lib/crypto/secp256k1"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/rlp"
 )
 
@@ -121,21 +119,20 @@ func (a *announceData) sign(privKey *ecdsa.PrivateKey) {
 	a.Update = a.Update.add("sign", sig)
 }
 
-func (a *announceData) checkSignature(pubKey *ecdsa.PublicKey) error {
+func (a *announceData) checkSignature(id cnode.ID) error {
 	var sig []byte
 	if err := a.Update.decode().get("sign", &sig); err != nil {
 		return err
 	}
 	rlp, _ := rlp.EncodeToBytes(announceBlock{a.Hash, a.Number, a.Td})
-	recPubkey, err := secp256k1.RecoverPubkey(crypto.Keccak256(rlp), sig)
+	recPubkey, err := crypto.SigToPub(crypto.Keccak256(rlp), sig)
 	if err != nil {
 		return err
 	}
-	pbytes := elliptic.Marshal(pubKey.Curve, pubKey.X, pubKey.Y)
-	if bytes.Equal(pbytes, recPubkey) {
+	if id == cnode.PubkeyToIDV4(recPubkey) {
 		return nil
 	}
-	return errors.New("Wrong signature")
+	return errors.New("wrong signature")
 }
 
 type blockInfo struct {

@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/davecgh/go-spew/spew"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
+	"github.com/5uwifi/canchain/lib/p2p/enr"
 	"github.com/5uwifi/canchain/lib/p2p/netutil"
 )
 
@@ -32,10 +33,10 @@ func runDialTest(t *testing.T, test dialtest) {
 		vtime   time.Time
 		running int
 	)
-	pm := func(ps []*Peer) map[discover.NodeID]*Peer {
-		m := make(map[discover.NodeID]*Peer)
+	pm := func(ps []*Peer) map[cnode.ID]*Peer {
+		m := make(map[cnode.ID]*Peer)
 		for _, p := range ps {
-			m[p.rw.id] = p
+			m[p.ID()] = p
 		}
 		return m
 	}
@@ -53,19 +54,20 @@ func runDialTest(t *testing.T, test dialtest) {
 			t.Errorf("round %d: new tasks mismatch:\ngot %v\nwant %v\nstate: %v\nrunning: %v\n",
 				i, spew.Sdump(new), spew.Sdump(round.new), spew.Sdump(test.init), spew.Sdump(running))
 		}
+		t.Log("tasks:", spew.Sdump(new))
 
 		vtime = vtime.Add(16 * time.Second)
 		running += len(new)
 	}
 }
 
-type fakeTable []*discover.Node
+type fakeTable []*cnode.Node
 
-func (t fakeTable) Self() *discover.Node                     { return new(discover.Node) }
-func (t fakeTable) Close()                                   {}
-func (t fakeTable) Lookup(discover.NodeID) []*discover.Node  { return nil }
-func (t fakeTable) Resolve(discover.NodeID) *discover.Node   { return nil }
-func (t fakeTable) ReadRandomNodes(buf []*discover.Node) int { return copy(buf, t) }
+func (t fakeTable) Self() *cnode.Node                     { return new(cnode.Node) }
+func (t fakeTable) Close()                                {}
+func (t fakeTable) LookupRandom() []*cnode.Node           { return nil }
+func (t fakeTable) Resolve(*cnode.Node) *cnode.Node       { return nil }
+func (t fakeTable) ReadRandomNodes(buf []*cnode.Node) int { return copy(buf, t) }
 
 func TestDialStateDynDial(t *testing.T) {
 	runDialTest(t, dialtest{
@@ -73,58 +75,58 @@ func TestDialStateDynDial(t *testing.T) {
 		rounds: []round{
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				new: []task{&discoverTask{}},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				done: []task{
-					&discoverTask{results: []*discover.Node{
-						{ID: uintID(2)},
-						{ID: uintID(3)},
-						{ID: uintID(4)},
-						{ID: uintID(5)},
-						{ID: uintID(6)},
-						{ID: uintID(7)},
+					&discoverTask{results: []*cnode.Node{
+						newNode(uintID(2), nil),
+						newNode(uintID(3), nil),
+						newNode(uintID(4), nil),
+						newNode(uintID(5), nil),
+						newNode(uintID(6), nil),
+						newNode(uintID(7), nil),
 					}},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(4)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(4)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 				new: []task{
 					&waitExpireTask{Duration: 14 * time.Second},
@@ -132,47 +134,47 @@ func TestDialStateDynDial(t *testing.T) {
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(4)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(6)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(6)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(6), nil)},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(7)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
 					&discoverTask{},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(5)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(7)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(7)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(7), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(0)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(5)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(7)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(0), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(5), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(7), nil)}},
 				},
 				done: []task{
 					&discoverTask{},
@@ -186,78 +188,78 @@ func TestDialStateDynDial(t *testing.T) {
 }
 
 func TestDialStateDynDialBootnode(t *testing.T) {
-	bootnodes := []*discover.Node{
-		{ID: uintID(1)},
-		{ID: uintID(2)},
-		{ID: uintID(3)},
+	bootnodes := []*cnode.Node{
+		newNode(uintID(1), nil),
+		newNode(uintID(2), nil),
+		newNode(uintID(3), nil),
 	}
 	table := fakeTable{
-		{ID: uintID(4)},
-		{ID: uintID(5)},
-		{ID: uintID(6)},
-		{ID: uintID(7)},
-		{ID: uintID(8)},
+		newNode(uintID(4), nil),
+		newNode(uintID(5), nil),
+		newNode(uintID(6), nil),
+		newNode(uintID(7), nil),
+		newNode(uintID(8), nil),
 	}
 	runDialTest(t, dialtest{
 		init: newDialState(nil, bootnodes, table, 5, nil),
 		rounds: []round{
 			{
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 					&discoverTask{},
 				},
 			},
 			{
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 			{},
 			{
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 			{
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(2)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(2), nil)},
 				},
 			},
 			{
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(2)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(2), nil)},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
 				},
 			},
 			{
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(4)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(4), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 		},
@@ -266,14 +268,14 @@ func TestDialStateDynDialBootnode(t *testing.T) {
 
 func TestDialStateDynDialFromTable(t *testing.T) {
 	table := fakeTable{
-		{ID: uintID(1)},
-		{ID: uintID(2)},
-		{ID: uintID(3)},
-		{ID: uintID(4)},
-		{ID: uintID(5)},
-		{ID: uintID(6)},
-		{ID: uintID(7)},
-		{ID: uintID(8)},
+		newNode(uintID(1), nil),
+		newNode(uintID(2), nil),
+		newNode(uintID(3), nil),
+		newNode(uintID(4), nil),
+		newNode(uintID(5), nil),
+		newNode(uintID(6), nil),
+		newNode(uintID(7), nil),
+		newNode(uintID(8), nil),
 	}
 
 	runDialTest(t, dialtest{
@@ -281,84 +283,92 @@ func TestDialStateDynDialFromTable(t *testing.T) {
 		rounds: []round{
 			{
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(2)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(2), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
 					&discoverTask{},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(2)}},
-					&discoverTask{results: []*discover.Node{
-						{ID: uintID(10)},
-						{ID: uintID(11)},
-						{ID: uintID(12)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(2), nil)},
+					&discoverTask{results: []*cnode.Node{
+						newNode(uintID(10), nil),
+						newNode(uintID(11), nil),
+						newNode(uintID(12), nil),
 					}},
 				},
 				new: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(10)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(11)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(12)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(10), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(11), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(12), nil)},
 					&discoverTask{},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(10)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(11)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(12)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(10), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(11), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(12), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(3)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(5)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(10)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(11)}},
-					&dialTask{flags: dynDialedConn, dest: &discover.Node{ID: uintID(12)}},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(3), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(5), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(10), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(11), nil)},
+					&dialTask{flags: dynDialedConn, dest: newNode(uintID(12), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(10)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(11)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(12)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(10), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(11), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(12), nil)}},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(10)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(11)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(12)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(10), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(11), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(12), nil)}},
 				},
 			},
 		},
 	})
 }
 
+func newNode(id cnode.ID, ip net.IP) *cnode.Node {
+	var r enr.Record
+	if ip != nil {
+		r.Set(enr.IP(ip))
+	}
+	return cnode.SignNull(&r, id)
+}
+
 func TestDialStateNetRestrict(t *testing.T) {
 	table := fakeTable{
-		{ID: uintID(1), IP: net.ParseIP("127.0.0.1")},
-		{ID: uintID(2), IP: net.ParseIP("127.0.0.2")},
-		{ID: uintID(3), IP: net.ParseIP("127.0.0.3")},
-		{ID: uintID(4), IP: net.ParseIP("127.0.0.4")},
-		{ID: uintID(5), IP: net.ParseIP("127.0.2.5")},
-		{ID: uintID(6), IP: net.ParseIP("127.0.2.6")},
-		{ID: uintID(7), IP: net.ParseIP("127.0.2.7")},
-		{ID: uintID(8), IP: net.ParseIP("127.0.2.8")},
+		newNode(uintID(1), net.ParseIP("127.0.0.1")),
+		newNode(uintID(2), net.ParseIP("127.0.0.2")),
+		newNode(uintID(3), net.ParseIP("127.0.0.3")),
+		newNode(uintID(4), net.ParseIP("127.0.0.4")),
+		newNode(uintID(5), net.ParseIP("127.0.2.5")),
+		newNode(uintID(6), net.ParseIP("127.0.2.6")),
+		newNode(uintID(7), net.ParseIP("127.0.2.7")),
+		newNode(uintID(8), net.ParseIP("127.0.2.8")),
 	}
 	restrict := new(netutil.Netlist)
 	restrict.Add("127.0.2.0/24")
@@ -377,12 +387,12 @@ func TestDialStateNetRestrict(t *testing.T) {
 }
 
 func TestDialStateStaticDial(t *testing.T) {
-	wantStatic := []*discover.Node{
-		{ID: uintID(1)},
-		{ID: uintID(2)},
-		{ID: uintID(3)},
-		{ID: uintID(4)},
-		{ID: uintID(5)},
+	wantStatic := []*cnode.Node{
+		newNode(uintID(1), nil),
+		newNode(uintID(2), nil),
+		newNode(uintID(3), nil),
+		newNode(uintID(4), nil),
+		newNode(uintID(5), nil),
 	}
 
 	runDialTest(t, dialtest{
@@ -390,36 +400,36 @@ func TestDialStateStaticDial(t *testing.T) {
 		rounds: []round{
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				new: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(3)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(5), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(3)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(4)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(4), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(4)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(5)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(4), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(5), nil)},
 				},
 				new: []task{
 					&waitExpireTask{Duration: 14 * time.Second},
@@ -427,22 +437,22 @@ func TestDialStateStaticDial(t *testing.T) {
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(4)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(4), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(3)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(5)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(3), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(5), nil)}},
 				},
 				new: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(2)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(4)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(4), nil)},
 				},
 			},
 		},
@@ -450,27 +460,27 @@ func TestDialStateStaticDial(t *testing.T) {
 }
 
 func TestDialStaticAfterReset(t *testing.T) {
-	wantStatic := []*discover.Node{
-		{ID: uintID(1)},
-		{ID: uintID(2)},
+	wantStatic := []*cnode.Node{
+		newNode(uintID(1), nil),
+		newNode(uintID(2), nil),
 	}
 
 	rounds := []round{
 		{
 			peers: nil,
 			new: []task{
-				&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(1)}},
-				&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(2)}},
+				&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
+				&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
 			},
 		},
 		{
 			peers: []*Peer{
-				{rw: &conn{flags: staticDialedConn, id: uintID(1)}},
-				{rw: &conn{flags: staticDialedConn, id: uintID(2)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
+				{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
 			},
 			done: []task{
-				&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(1)}},
-				&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(2)}},
+				&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
+				&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
 			},
 			new: []task{
 				&waitExpireTask{Duration: 30 * time.Second},
@@ -490,10 +500,10 @@ func TestDialStaticAfterReset(t *testing.T) {
 }
 
 func TestDialStateCache(t *testing.T) {
-	wantStatic := []*discover.Node{
-		{ID: uintID(1)},
-		{ID: uintID(2)},
-		{ID: uintID(3)},
+	wantStatic := []*cnode.Node{
+		newNode(uintID(1), nil),
+		newNode(uintID(2), nil),
+		newNode(uintID(3), nil),
 	}
 
 	runDialTest(t, dialtest{
@@ -502,28 +512,28 @@ func TestDialStateCache(t *testing.T) {
 			{
 				peers: nil,
 				new: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(2)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: staticDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: staticDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: staticDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(1)}},
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(2)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(1), nil)},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(2), nil)},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				done: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
 				},
 				new: []task{
 					&waitExpireTask{Duration: 14 * time.Second},
@@ -531,17 +541,17 @@ func TestDialStateCache(t *testing.T) {
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 			},
 			{
 				peers: []*Peer{
-					{rw: &conn{flags: dynDialedConn, id: uintID(1)}},
-					{rw: &conn{flags: dynDialedConn, id: uintID(2)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(1), nil)}},
+					{rw: &conn{flags: dynDialedConn, node: newNode(uintID(2), nil)}},
 				},
 				new: []task{
-					&dialTask{flags: staticDialedConn, dest: &discover.Node{ID: uintID(3)}},
+					&dialTask{flags: staticDialedConn, dest: newNode(uintID(3), nil)},
 				},
 			},
 		},
@@ -549,11 +559,11 @@ func TestDialStateCache(t *testing.T) {
 }
 
 func TestDialResolve(t *testing.T) {
-	resolved := discover.NewNode(uintID(1), net.IP{127, 0, 55, 234}, 3333, 4444)
+	resolved := newNode(uintID(1), net.IP{127, 0, 55, 234})
 	table := &resolveMock{answer: resolved}
 	state := newDialState(nil, nil, table, 0, nil)
 
-	dest := discover.NewNode(uintID(1), nil, 0, 0)
+	dest := newNode(uintID(1), nil)
 	state.addStatic(dest)
 	tasks := state.newTasks(0, nil, time.Time{})
 	if !reflect.DeepEqual(tasks, []task{&dialTask{flags: staticDialedConn, dest: dest}}) {
@@ -563,7 +573,7 @@ func TestDialResolve(t *testing.T) {
 	config := Config{Dialer: TCPDialer{&net.Dialer{Deadline: time.Now().Add(-5 * time.Minute)}}}
 	srv := &Server{ntab: table, Config: config}
 	tasks[0].Do(srv)
-	if !reflect.DeepEqual(table.resolveCalls, []discover.NodeID{dest.ID}) {
+	if !reflect.DeepEqual(table.resolveCalls, []*cnode.Node{dest}) {
 		t.Fatalf("wrong resolve calls, got %v", table.resolveCalls)
 	}
 
@@ -589,24 +599,23 @@ next:
 	return true
 }
 
-func uintID(i uint32) discover.NodeID {
-	var id discover.NodeID
+func uintID(i uint32) cnode.ID {
+	var id cnode.ID
 	binary.BigEndian.PutUint32(id[:], i)
 	return id
 }
 
 type resolveMock struct {
-	resolveCalls []discover.NodeID
-	answer       *discover.Node
+	resolveCalls []*cnode.Node
+	answer       *cnode.Node
 }
 
-func (t *resolveMock) Resolve(id discover.NodeID) *discover.Node {
-	t.resolveCalls = append(t.resolveCalls, id)
+func (t *resolveMock) Resolve(n *cnode.Node) *cnode.Node {
+	t.resolveCalls = append(t.resolveCalls, n)
 	return t.answer
 }
 
-func (t *resolveMock) Self() *discover.Node                     { return new(discover.Node) }
-func (t *resolveMock) Close()                                   {}
-func (t *resolveMock) Bootstrap([]*discover.Node)               {}
-func (t *resolveMock) Lookup(discover.NodeID) []*discover.Node  { return nil }
-func (t *resolveMock) ReadRandomNodes(buf []*discover.Node) int { return 0 }
+func (t *resolveMock) Self() *cnode.Node                     { return new(cnode.Node) }
+func (t *resolveMock) Close()                                {}
+func (t *resolveMock) LookupRandom() []*cnode.Node           { return nil }
+func (t *resolveMock) ReadRandomNodes(buf []*cnode.Node) int { return 0 }

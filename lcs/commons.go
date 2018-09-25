@@ -9,7 +9,7 @@ import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/light"
 	"github.com/5uwifi/canchain/params"
 )
@@ -43,7 +43,7 @@ func (c *lcsCommons) makeProtocols(versions []uint) []p2p.Protocol {
 			Run: func(p *p2p.Peer, rw p2p.MsgReadWriter) error {
 				return c.protocolManager.runPeer(version, p, rw)
 			},
-			PeerInfo: func(id discover.NodeID) interface{} {
+			PeerInfo: func(id cnode.ID) interface{} {
 				if p := c.protocolManager.peers.Peer(fmt.Sprintf("%x", id[:8])); p != nil {
 					return p.Info()
 				}

@@ -13,18 +13,18 @@ import (
 
 	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/rpc"
 )
 
 type testService struct {
-	id discover.NodeID
+	id cnode.ID
 
 	peerCount int64
 
-	peers    map[discover.NodeID]*testPeer
+	peers    map[cnode.ID]*testPeer
 	peersMtx sync.Mutex
 
 	state atomic.Value
@@ -33,7 +33,7 @@ type testService struct {
 func newTestService(ctx *adapters.ServiceContext) (node.Service, error) {
 	svc := &testService{
 		id:    ctx.Config.ID,
-		peers: make(map[discover.NodeID]*testPeer),
+		peers: make(map[cnode.ID]*testPeer),
 	}
 	svc.state.Store(ctx.Snapshot)
 	return svc, nil
@@ -44,7 +44,7 @@ type testPeer struct {
 	dumReady  chan struct{}
 }
 
-func (t *testService) peer(id discover.NodeID) *testPeer {
+func (t *testService) peer(id cnode.ID) *testPeer {
 	t.peersMtx.Lock()
 	defer t.peersMtx.Unlock()
 	if peer, ok := t.peers[id]; ok {
@@ -358,7 +358,7 @@ func (t *expectEvents) nodeEvent(id string, up bool) *Event {
 		Type: EventTypeNode,
 		Node: &Node{
 			Config: &adapters.NodeConfig{
-				ID: discover.MustHexID(id),
+				ID: cnode.HexID(id),
 			},
 			Up: up,
 		},
@@ -369,8 +369,8 @@ func (t *expectEvents) connEvent(one, other string, up bool) *Event {
 	return &Event{
 		Type: EventTypeConn,
 		Conn: &Conn{
-			One:   discover.MustHexID(one),
-			Other: discover.MustHexID(other),
+			One:   cnode.HexID(one),
+			Other: cnode.HexID(other),
 			Up:    up,
 		},
 	}

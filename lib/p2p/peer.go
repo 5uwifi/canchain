@@ -12,7 +12,8 @@ import (
 	"github.com/5uwifi/canchain/common/mclock"
 	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/lib/log4j"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
+	"github.com/5uwifi/canchain/lib/p2p/enr"
 	"github.com/5uwifi/canchain/lib/rlp"
 )
 
@@ -42,7 +43,7 @@ type protoHandshake struct {
 	Name       string
 	Caps       []Cap
 	ListenPort uint64
-	ID         discover.NodeID
+	ID         []byte
 
 	Rest []rlp.RawValue `rlp:"tail"`
 }
@@ -60,12 +61,12 @@ const (
 )
 
 type PeerEvent struct {
-	Type     PeerEventType   `json:"type"`
-	Peer     discover.NodeID `json:"peer"`
-	Error    string          `json:"error,omitempty"`
-	Protocol string          `json:"protocol,omitempty"`
-	MsgCode  *uint64         `json:"msg_code,omitempty"`
-	MsgSize  *uint32         `json:"msg_size,omitempty"`
+	Type     PeerEventType `json:"type"`
+	Peer     cnode.ID      `json:"peer"`
+	Error    string        `json:"error,omitempty"`
+	Protocol string        `json:"protocol,omitempty"`
+	MsgCode  *uint64       `json:"msg_code,omitempty"`
+	MsgSize  *uint32       `json:"msg_size,omitempty"`
 }
 
 type Peer struct {
@@ -82,16 +83,21 @@ type Peer struct {
 	events *event.Feed
 }
 
-func NewPeer(id discover.NodeID, name string, caps []Cap) *Peer {
+func NewPeer(id cnode.ID, name string, caps []Cap) *Peer {
 	pipe, _ := net.Pipe()
-	conn := &conn{fd: pipe, transport: nil, id: id, caps: caps, name: name}
+	node := cnode.SignNull(new(enr.Record), id)
+	conn := &conn{fd: pipe, transport: nil, node: node, caps: caps, name: name}
 	peer := newPeer(conn, nil)
 	close(peer.closed)
 	return peer
 }
 
-func (p *Peer) ID() discover.NodeID {
-	return p.rw.id
+func (p *Peer) ID() cnode.ID {
+	return p.rw.node.ID()
+}
+
+func (p *Peer) Node() *cnode.Node {
+	return p.rw.node
 }
 
 func (p *Peer) Name() string {
@@ -118,7 +124,8 @@ func (p *Peer) Disconnect(reason DiscReason) {
 }
 
 func (p *Peer) String() string {
-	return fmt.Sprintf("Peer %x %v", p.rw.id[:8], p.RemoteAddr())
+	id := p.ID()
+	return fmt.Sprintf("Peer %x %v", id[:8], p.RemoteAddr())
 }
 
 func (p *Peer) Inbound() bool {
@@ -134,7 +141,7 @@ func newPeer(conn *conn, protocols []Protocol) *Peer {
 		disc:     make(chan DiscReason),
 		protoErr: make(chan error, len(protomap)+1),
 		closed:   make(chan struct{}),
-		log:      log4j.New("id", conn.id, "conn", conn.flags),
+		log:      log4j.New("id", conn.node.ID(), "conn", conn.flags),
 	}
 	return p
 }

@@ -10,7 +10,7 @@ import (
 	"github.com/5uwifi/canchain/lib/event"
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/pipes"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/rpc"
@@ -19,14 +19,14 @@ import (
 type SimAdapter struct {
 	pipe     func() (net.Conn, net.Conn, error)
 	mtx      sync.RWMutex
-	nodes    map[discover.NodeID]*SimNode
+	nodes    map[cnode.ID]*SimNode
 	services map[string]ServiceFunc
 }
 
 func NewSimAdapter(services map[string]ServiceFunc) *SimAdapter {
 	return &SimAdapter{
 		pipe:     pipes.NetPipe,
-		nodes:    make(map[discover.NodeID]*SimNode),
+		nodes:    make(map[cnode.ID]*SimNode),
 		services: services,
 	}
 }
@@ -34,7 +34,7 @@ func NewSimAdapter(services map[string]ServiceFunc) *SimAdapter {
 func NewTCPAdapter(services map[string]ServiceFunc) *SimAdapter {
 	return &SimAdapter{
 		pipe:     pipes.TCPPipe,
-		nodes:    make(map[discover.NodeID]*SimNode),
+		nodes:    make(map[cnode.ID]*SimNode),
 		services: services,
 	}
 }
@@ -87,14 +87,14 @@ func (s *SimAdapter) NewNode(config *NodeConfig) (Node, error) {
 	return simNode, nil
 }
 
-func (s *SimAdapter) Dial(dest *discover.Node) (conn net.Conn, err error) {
-	node, ok := s.GetNode(dest.ID)
+func (s *SimAdapter) Dial(dest *cnode.Node) (conn net.Conn, err error) {
+	node, ok := s.GetNode(dest.ID())
 	if !ok {
-		return nil, fmt.Errorf("unknown node: %s", dest.ID)
+		return nil, fmt.Errorf("unknown node: %s", dest.ID())
 	}
 	srv := node.Server()
 	if srv == nil {
-		return nil, fmt.Errorf("node not running: %s", dest.ID)
+		return nil, fmt.Errorf("node not running: %s", dest.ID())
 	}
 	pipe1, pipe2, err := s.pipe()
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *SimAdapter) Dial(dest *discover.Node) (conn net.Conn, err error) {
 	return pipe2, nil
 }
 
-func (s *SimAdapter) DialRPC(id discover.NodeID) (*rpc.Client, error) {
+func (s *SimAdapter) DialRPC(id cnode.ID) (*rpc.Client, error) {
 	node, ok := s.GetNode(id)
 	if !ok {
 		return nil, fmt.Errorf("unknown node: %s", id)
@@ -116,7 +116,7 @@ func (s *SimAdapter) DialRPC(id discover.NodeID) (*rpc.Client, error) {
 	return rpc.DialInProc(handler), nil
 }
 
-func (s *SimAdapter) GetNode(id discover.NodeID) (*SimNode, bool) {
+func (s *SimAdapter) GetNode(id cnode.ID) (*SimNode, bool) {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 	node, ok := s.nodes[id]
@@ -125,7 +125,7 @@ func (s *SimAdapter) GetNode(id discover.NodeID) (*SimNode, bool) {
 
 type SimNode struct {
 	lock         sync.RWMutex
-	ID           discover.NodeID
+	ID           cnode.ID
 	config       *NodeConfig
 	adapter      *SimAdapter
 	node         *node.Node
@@ -138,8 +138,8 @@ func (sn *SimNode) Addr() []byte {
 	return []byte(sn.Node().String())
 }
 
-func (sn *SimNode) Node() *discover.Node {
-	return discover.NewNode(sn.ID, net.IP{127, 0, 0, 1}, 30303, 30303)
+func (sn *SimNode) Node() *cnode.Node {
+	return sn.config.Node()
 }
 
 func (sn *SimNode) Client() (*rpc.Client, error) {

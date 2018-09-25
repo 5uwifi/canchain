@@ -10,7 +10,7 @@ import (
 	"github.com/5uwifi/canchain/lib/crypto"
 	"github.com/5uwifi/canchain/lib/metrics"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/rpc"
 )
 
@@ -27,7 +27,7 @@ func (api *PrivateAdminAPI) AddPeer(url string) (bool, error) {
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	node, err := discover.ParseNode(url)
+	node, err := cnode.ParseV4(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
 	}
@@ -40,7 +40,7 @@ func (api *PrivateAdminAPI) RemovePeer(url string) (bool, error) {
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	node, err := discover.ParseNode(url)
+	node, err := cnode.ParseV4(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
 	}
@@ -53,7 +53,7 @@ func (api *PrivateAdminAPI) AddTrustedPeer(url string) (bool, error) {
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	node, err := discover.ParseNode(url)
+	node, err := cnode.ParseV4(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
 	}
@@ -66,7 +66,7 @@ func (api *PrivateAdminAPI) RemoveTrustedPeer(url string) (bool, error) {
 	if server == nil {
 		return false, ErrNodeStopped
 	}
-	node, err := discover.ParseNode(url)
+	node, err := cnode.ParseV4(url)
 	if err != nil {
 		return false, fmt.Errorf("invalid ccnode: %v", err)
 	}

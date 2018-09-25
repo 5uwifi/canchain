@@ -9,7 +9,7 @@ import (
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/log4j"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/cnode"
 )
 
 const (
@@ -41,7 +41,7 @@ func (pm *ProtocolManager) syncTransactions(p *peer) {
 
 func (pm *ProtocolManager) txsyncLoop() {
 	var (
-		pending = make(map[discover.NodeID]*txsync)
+		pending = make(map[cnode.ID]*txsync)
 		sending = false
 		pack    = new(txsync)
 		done    = make(chan error, 1)
