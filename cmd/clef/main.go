@@ -29,7 +29,7 @@ import (
 	"gopkg.in/urfave/cli.v1"
 )
 
-const ExternalAPIVersion = "2.0.0"
+const ExternalAPIVersion = "3.0.0"
 
 const InternalAPIVersion = "2.0.0"
 
@@ -49,6 +49,10 @@ var (
 		Name:  "loglevel",
 		Value: 4,
 		Usage: "log level to emit to the screen",
+	}
+	advancedMode = cli.BoolFlag{
+		Name:  "advanced",
+		Usage: "If enabled, issues warnings instead of rejections for suspicious requests. Default off",
 	}
 	keystoreFlag = cli.StringFlag{
 		Name:  "keystore",
@@ -171,6 +175,7 @@ func init() {
 		ruleFlag,
 		stdiouiFlag,
 		testFlag,
+		advancedMode,
 	}
 	app.Action = signer
 	app.Commands = []cli.Command{initCommand, attestCommand, addCredentialCommand}
@@ -356,7 +361,8 @@ func signer(c *cli.Context) error {
 		c.String(keystoreFlag.Name),
 		c.Bool(utils.NoUSBFlag.Name),
 		ui, db,
-		c.Bool(utils.LightKDFFlag.Name))
+		c.Bool(utils.LightKDFFlag.Name),
+		c.Bool(advancedMode.Name))
 
 	api = apiImpl
 

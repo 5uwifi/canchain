@@ -21,13 +21,11 @@ import (
 )
 
 type ExternalAPI interface {
-	List(ctx context.Context) (Accounts, error)
+	List(ctx context.Context) ([]common.Address, error)
 	New(ctx context.Context) (accounts.Account, error)
 	SignTransaction(ctx context.Context, args SendTxArgs, methodSelector *string) (*canapi.SignTransactionResult, error)
 	Sign(ctx context.Context, addr common.MixedcaseAddress, data hexutil.Bytes) (hexutil.Bytes, error)
-	EcRecover(ctx context.Context, data, sig hexutil.Bytes) (common.Address, error)
 	Export(ctx context.Context, addr common.Address) (json.RawMessage, error)
-	Import(ctx context.Context, keyJSON json.RawMessage) (Account, error)
 }
 
 type SignerUI interface {
@@ -44,20 +42,23 @@ type SignerUI interface {
 }
 
 type SignerAPI struct {
-	chainID   *big.Int
-	am        *accounts.Manager
-	UI        SignerUI
-	validator *Validator
+	chainID    *big.Int
+	am         *accounts.Manager
+	UI         SignerUI
+	validator  *Validator
+	rejectMode bool
 }
 
 type Metadata struct {
-	Remote string `json:"remote"`
-	Local  string `json:"local"`
-	Scheme string `json:"scheme"`
+	Remote    string `json:"remote"`
+	Local     string `json:"local"`
+	Scheme    string `json:"scheme"`
+	UserAgent string `json:"User-Agent"`
+	Origin    string `json:"Origin"`
 }
 
 func MetadataFromContext(ctx context.Context) Metadata {
-	m := Metadata{"NA", "NA", "NA"}
+	m := Metadata{"NA", "NA", "NA", "", ""}
 
 	if v := ctx.Value("remote"); v != nil {
 		m.Remote = v.(string)
@@ -67,6 +68,12 @@ func MetadataFromContext(ctx context.Context) Metadata {
 	}
 	if v := ctx.Value("local"); v != nil {
 		m.Local = v.(string)
+	}
+	if v := ctx.Value("Origin"); v != nil {
+		m.Origin = v.(string)
+	}
+	if v := ctx.Value("User-Agent"); v != nil {
+		m.UserAgent = v.(string)
 	}
 	return m
 }
@@ -140,7 +147,7 @@ type (
 
 var ErrRequestDenied = errors.New("Request denied")
 
-func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abidb *AbiDb, lightKDF bool) *SignerAPI {
+func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abidb *AbiDb, lightKDF bool, advancedMode bool) *SignerAPI {
 	var (
 		backends []accounts.Backend
 		n, p     = keystore.StandardScryptN, keystore.StandardScryptP
@@ -165,10 +172,13 @@ func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abi
 			log4j.Debug("Trezor support enabled")
 		}
 	}
-	return &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb)}
+	if advancedMode {
+		log4j.Info("Clef is in advanced mode: will warn instead of reject")
+	}
+	return &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb), !advancedMode}
 }
 
-func (api *SignerAPI) List(ctx context.Context) (Accounts, error) {
+func (api *SignerAPI) List(ctx context.Context) ([]common.Address, error) {
 	var accs []Account
 	for _, wallet := range api.am.Wallets() {
 		for _, acc := range wallet.Accounts() {
@@ -184,7 +194,13 @@ func (api *SignerAPI) List(ctx context.Context) (Accounts, error) {
 		return nil, ErrRequestDenied
 
 	}
-	return result.Accounts, nil
+
+	addresses := make([]common.Address, 0)
+	for _, acc := range result.Accounts {
+		addresses = append(addresses, acc.Address)
+	}
+
+	return addresses, nil
 }
 
 func (api *SignerAPI) New(ctx context.Context) (accounts.Account, error) {
@@ -192,15 +208,25 @@ func (api *SignerAPI) New(ctx context.Context) (accounts.Account, error) {
 	if len(be) == 0 {
 		return accounts.Account{}, errors.New("password based accounts not supported")
 	}
-	resp, err := api.UI.ApproveNewAccount(&NewAccountRequest{MetadataFromContext(ctx)})
-
-	if err != nil {
-		return accounts.Account{}, err
+	var (
+		resp NewAccountResponse
+		err  error
+	)
+	for i := 0; i < 3; i++ {
+		resp, err = api.UI.ApproveNewAccount(&NewAccountRequest{MetadataFromContext(ctx)})
+		if err != nil {
+			return accounts.Account{}, err
+		}
+		if !resp.Approved {
+			return accounts.Account{}, ErrRequestDenied
+		}
+		if pwErr := ValidatePasswordFormat(resp.Password); pwErr != nil {
+			api.UI.ShowError(fmt.Sprintf("Account creation attempt #%d failed due to password requirements: %v", (i + 1), pwErr))
+		} else {
+			return be[0].(*keystore.KeyStore).NewAccount(resp.Password)
+		}
 	}
-	if !resp.Approved {
-		return accounts.Account{}, ErrRequestDenied
-	}
-	return be[0].(*keystore.KeyStore).NewAccount(resp.Password)
+	return accounts.Account{}, errors.New("account creation failed")
 }
 
 func logDiff(original *SignTxRequest, new *SignTxResponse) bool {
@@ -229,10 +255,10 @@ func logDiff(original *SignTxRequest, new *SignTxResponse) bool {
 		d0s := ""
 		d1s := ""
 		if d0 != nil {
-			d0s = common.ToHex(*d0)
+			d0s = hexutil.Encode(*d0)
 		}
 		if d1 != nil {
-			d1s = common.ToHex(*d1)
+			d1s = hexutil.Encode(*d1)
 		}
 		if d1s != d0s {
 			modified = true
@@ -254,6 +280,11 @@ func (api *SignerAPI) SignTransaction(ctx context.Context, args SendTxArgs, meth
 	msgs, err := api.validator.ValidateTransaction(&args, methodSelector)
 	if err != nil {
 		return nil, err
+	}
+	if api.rejectMode {
+		if err := msgs.getWarnings(); err != nil {
+			return nil, err
+		}
 	}
 
 	req := SignTxRequest{
@@ -317,22 +348,6 @@ func (api *SignerAPI) Sign(ctx context.Context, addr common.MixedcaseAddress, da
 	}
 	signature[64] += 27
 	return signature, nil
-}
-
-func (api *SignerAPI) EcRecover(ctx context.Context, data, sig hexutil.Bytes) (common.Address, error) {
-	if len(sig) != 65 {
-		return common.Address{}, fmt.Errorf("signature must be 65 bytes long")
-	}
-	if sig[64] != 27 && sig[64] != 28 {
-		return common.Address{}, fmt.Errorf("invalid CANChain signature (V is not 27 or 28)")
-	}
-	sig[64] -= 27
-	hash, _ := SignHash(data)
-	rpk, err := crypto.SigToPub(hash, sig)
-	if err != nil {
-		return common.Address{}, err
-	}
-	return crypto.PubkeyToAddress(*rpk), nil
 }
 
 func SignHash(data []byte) ([]byte, string) {

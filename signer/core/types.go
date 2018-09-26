@@ -2,6 +2,7 @@ package core
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 
 	"math/big"
@@ -42,6 +43,35 @@ type ValidationInfo struct {
 }
 type ValidationMessages struct {
 	Messages []ValidationInfo
+}
+
+const (
+	WARN = "WARNING"
+	CRIT = "CRITICAL"
+	INFO = "Info"
+)
+
+func (vs *ValidationMessages) crit(msg string) {
+	vs.Messages = append(vs.Messages, ValidationInfo{CRIT, msg})
+}
+func (vs *ValidationMessages) warn(msg string) {
+	vs.Messages = append(vs.Messages, ValidationInfo{WARN, msg})
+}
+func (vs *ValidationMessages) info(msg string) {
+	vs.Messages = append(vs.Messages, ValidationInfo{INFO, msg})
+}
+
+func (v *ValidationMessages) getWarnings() error {
+	var messages []string
+	for _, msg := range v.Messages {
+		if msg.Typ == WARN || msg.Typ == CRIT {
+			messages = append(messages, msg.Message)
+		}
+	}
+	if len(messages) > 0 {
+		return fmt.Errorf("Validation failed: %s", strings.Join(messages, ","))
+	}
+	return nil
 }
 
 type SendTxArgs struct {
