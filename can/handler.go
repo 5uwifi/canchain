@@ -31,6 +31,8 @@ const (
 	estHeaderRlpSize  = 500
 
 	txChanSize = 4096
+
+	minBroadcastPeers = 4
 )
 
 var (
@@ -583,7 +585,14 @@ func (pm *ProtocolManager) BroadcastBlock(block *types.Block, propagate bool) {
 			log4j.Error("Propagating dangling block", "number", block.Number(), "hash", hash)
 			return
 		}
-		transfer := peers[:int(math.Sqrt(float64(len(peers))))]
+		transferLen := int(math.Sqrt(float64(len(peers))))
+		if transferLen < minBroadcastPeers {
+			transferLen = minBroadcastPeers
+		}
+		if transferLen > len(peers) {
+			transferLen = len(peers)
+		}
+		transfer := peers[:transferLen]
 		for _, peer := range transfer {
 			peer.AsyncSendNewBlock(block, td)
 		}

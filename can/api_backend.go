@@ -12,7 +12,6 @@ import (
 	"github.com/5uwifi/canchain/common/math"
 	"github.com/5uwifi/canchain/kernel"
 	"github.com/5uwifi/canchain/kernel/bloombits"
-	"github.com/5uwifi/canchain/kernel/rawdb"
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/kernel/vm"
@@ -83,18 +82,11 @@ func (b *CanAPIBackend) GetBlock(ctx context.Context, hash common.Hash) (*types.
 }
 
 func (b *CanAPIBackend) GetReceipts(ctx context.Context, hash common.Hash) (types.Receipts, error) {
-	if number := rawdb.ReadHeaderNumber(b.can.chainDb, hash); number != nil {
-		return rawdb.ReadReceipts(b.can.chainDb, hash, *number), nil
-	}
-	return nil, nil
+	return b.can.blockchain.GetReceiptsByHash(hash), nil
 }
 
 func (b *CanAPIBackend) GetLogs(ctx context.Context, hash common.Hash) ([][]*types.Log, error) {
-	number := rawdb.ReadHeaderNumber(b.can.chainDb, hash)
-	if number == nil {
-		return nil, nil
-	}
-	receipts := rawdb.ReadReceipts(b.can.chainDb, hash, *number)
+	receipts := b.can.blockchain.GetReceiptsByHash(hash)
 	if receipts == nil {
 		return nil, nil
 	}

@@ -9,11 +9,11 @@ import (
 	"runtime"
 
 	"github.com/5uwifi/canchain/lib/log4j"
-	"github.com/5uwifi/canchain/lib/log4j/term"
 	"github.com/5uwifi/canchain/lib/metrics"
 	"github.com/5uwifi/canchain/lib/metrics/exp"
 	"github.com/fjl/memsize/memsizeui"
 	colorable "github.com/mattn/go-colorable"
+	"github.com/mattn/go-isatty"
 	"gopkg.in/urfave/cli.v1"
 )
 
@@ -84,7 +84,7 @@ var (
 )
 
 func init() {
-	usecolor := term.IsTty(os.Stderr.Fd()) && os.Getenv("TERM") != "dumb"
+	usecolor := (isatty.IsTerminal(os.Stderr.Fd()) || isatty.IsCygwinTerminal(os.Stderr.Fd())) && os.Getenv("TERM") != "dumb"
 	output := io.Writer(os.Stderr)
 	if usecolor {
 		output = colorable.NewColorableStderr()

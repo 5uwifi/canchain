@@ -38,6 +38,7 @@ var (
 const (
 	bodyCacheLimit      = 256
 	blockCacheLimit     = 256
+	receiptsCacheLimit  = 32
 	maxFutureBlocks     = 256
 	maxTimeFutureBlocks = 30
 	badBlockLimit       = 10
@@ -77,11 +78,12 @@ type BlockChain struct {
 	currentBlock     atomic.Value
 	currentFastBlock atomic.Value
 
-	stateCache   state.Database
-	bodyCache    *lru.Cache
-	bodyRLPCache *lru.Cache
-	blockCache   *lru.Cache
-	futureBlocks *lru.Cache
+	stateCache    state.Database
+	bodyCache     *lru.Cache
+	bodyRLPCache  *lru.Cache
+	receiptsCache *lru.Cache
+	blockCache    *lru.Cache
+	futureBlocks  *lru.Cache
 
 	quit          chan struct{}
 	running       int32
@@ -106,6 +108,7 @@ func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *par
 	}
 	bodyCache, _ := lru.New(bodyCacheLimit)
 	bodyRLPCache, _ := lru.New(bodyCacheLimit)
+	receiptsCache, _ := lru.New(receiptsCacheLimit)
 	blockCache, _ := lru.New(blockCacheLimit)
 	futureBlocks, _ := lru.New(maxFutureBlocks)
 	badBlocks, _ := lru.New(badBlockLimit)
@@ -120,6 +123,7 @@ func NewBlockChain(db candb.Database, cacheConfig *CacheConfig, chainConfig *par
 		shouldPreserve: shouldPreserve,
 		bodyCache:      bodyCache,
 		bodyRLPCache:   bodyRLPCache,
+		receiptsCache:  receiptsCache,
 		blockCache:     blockCache,
 		futureBlocks:   futureBlocks,
 		engine:         engine,
@@ -220,6 +224,7 @@ func (bc *BlockChain) SetHead(head uint64) error {
 
 	bc.bodyCache.Purge()
 	bc.bodyRLPCache.Purge()
+	bc.receiptsCache.Purge()
 	bc.blockCache.Purge()
 	bc.futureBlocks.Purge()
 
@@ -478,11 +483,18 @@ func (bc *BlockChain) GetBlockByNumber(number uint64) *types.Block {
 }
 
 func (bc *BlockChain) GetReceiptsByHash(hash common.Hash) types.Receipts {
+	if receipts, ok := bc.receiptsCache.Get(hash); ok {
+		return receipts.(types.Receipts)
+	}
+
 	number := rawdb.ReadHeaderNumber(bc.db, hash)
 	if number == nil {
 		return nil
 	}
-	return rawdb.ReadReceipts(bc.db, hash, *number)
+
+	receipts := rawdb.ReadReceipts(bc.db, hash, *number)
+	bc.receiptsCache.Add(hash, receipts)
+	return receipts
 }
 
 func (bc *BlockChain) GetBlocksFromHash(hash common.Hash, n int) (blocks []*types.Block) {
