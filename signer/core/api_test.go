@@ -3,6 +3,7 @@ package core
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"math/big"
@@ -22,6 +23,10 @@ import (
 
 type HeadlessUI struct {
 	controller chan string
+}
+
+func (ui *HeadlessUI) OnInputRequired(info UserInputRequest) (UserInputResponse, error) {
+	return UserInputResponse{}, errors.New("not implemented")
 }
 
 func (ui *HeadlessUI) OnSignerStartup(info StartupInfo) {

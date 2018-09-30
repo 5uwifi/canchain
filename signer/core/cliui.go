@@ -61,6 +61,22 @@ func (ui *CommandlineUI) readPasswordText(inputstring string) string {
 	return string(text)
 }
 
+func (ui *CommandlineUI) OnInputRequired(info UserInputRequest) (UserInputResponse, error) {
+	fmt.Println(info.Title)
+	fmt.Println(info.Prompt)
+	if info.IsPassword {
+		text, err := terminal.ReadPassword(int(os.Stdin.Fd()))
+		if err != nil {
+			log4j.Error("Failed to read password", "err", err)
+		}
+		fmt.Println("-----------------------")
+		return UserInputResponse{string(text)}, err
+	}
+	text := ui.readString()
+	fmt.Println("-----------------------")
+	return UserInputResponse{text}, nil
+}
+
 func (ui *CommandlineUI) confirm() bool {
 	fmt.Printf("Approve? [y/N]:\n")
 	if ui.readString() == "y" {

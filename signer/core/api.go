@@ -20,6 +20,8 @@ import (
 	"github.com/5uwifi/canchain/privacy/canapi"
 )
 
+const numberOfAccountsToDerive = 10
+
 type ExternalAPI interface {
 	List(ctx context.Context) ([]common.Address, error)
 	New(ctx context.Context) (accounts.Account, error)
@@ -39,6 +41,7 @@ type SignerUI interface {
 	ShowInfo(message string)
 	OnApprovedTx(tx canapi.SignTransactionResult)
 	OnSignerStartup(info StartupInfo)
+	OnInputRequired(info UserInputRequest) (UserInputResponse, error)
 }
 
 type SignerAPI struct {
@@ -143,6 +146,14 @@ type (
 	StartupInfo struct {
 		Info map[string]interface{} `json:"info"`
 	}
+	UserInputRequest struct {
+		Prompt     string `json:"prompt"`
+		Title      string `json:"title"`
+		IsPassword bool   `json:"isPassword"`
+	}
+	UserInputResponse struct {
+		Text string `json:"text"`
+	}
 )
 
 var ErrRequestDenied = errors.New("Request denied")
@@ -158,6 +169,9 @@ func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abi
 	if len(ksLocation) > 0 {
 		backends = append(backends, keystore.NewKeyStore(ksLocation, n, p))
 	}
+	if advancedMode {
+		log4j.Info("Clef is in advanced mode: will warn instead of reject")
+	}
 	if !noUSB {
 		if ledgerhub, err := usbwallet.NewLedgerHub(); err != nil {
 			log4j.Warn(fmt.Sprintf("Failed to start Ledger hub, disabling: %v", err))
@@ -172,10 +186,88 @@ func NewSignerAPI(chainID int64, ksLocation string, noUSB bool, ui SignerUI, abi
 			log4j.Debug("Trezor support enabled")
 		}
 	}
-	if advancedMode {
-		log4j.Info("Clef is in advanced mode: will warn instead of reject")
+	signer := &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb), !advancedMode}
+	if !noUSB {
+		signer.startUSBListener()
 	}
-	return &SignerAPI{big.NewInt(chainID), accounts.NewManager(backends...), ui, NewValidator(abidb), !advancedMode}
+	return signer
+}
+func (api *SignerAPI) openTrezor(url accounts.URL) {
+	resp, err := api.UI.OnInputRequired(UserInputRequest{
+		Prompt: "Pin required to open Trezor wallet\n" +
+			"Look at the device for number positions\n\n" +
+			"7 | 8 | 9\n" +
+			"--+---+--\n" +
+			"4 | 5 | 6\n" +
+			"--+---+--\n" +
+			"1 | 2 | 3\n\n",
+		IsPassword: true,
+		Title:      "Trezor unlock",
+	})
+	if err != nil {
+		log4j.Warn("failed getting trezor pin", "err", err)
+		return
+	}
+	w, err := api.am.Wallet(url.String())
+	if err != nil {
+		log4j.Warn("wallet unavailable", "url", url)
+		return
+	}
+	err = w.Open(resp.Text)
+	if err != nil {
+		log4j.Warn("failed to open wallet", "wallet", url, "err", err)
+		return
+	}
+
+}
+
+func (api *SignerAPI) startUSBListener() {
+	events := make(chan accounts.WalletEvent, 16)
+	am := api.am
+	am.Subscribe(events)
+	go func() {
+
+		for _, wallet := range am.Wallets() {
+			if err := wallet.Open(""); err != nil {
+				log4j.Warn("Failed to open wallet", "url", wallet.URL(), "err", err)
+				if err == usbwallet.ErrTrezorPINNeeded {
+					go api.openTrezor(wallet.URL())
+				}
+			}
+		}
+		for event := range events {
+			switch event.Kind {
+			case accounts.WalletArrived:
+				if err := event.Wallet.Open(""); err != nil {
+					log4j.Warn("New wallet appeared, failed to open", "url", event.Wallet.URL(), "err", err)
+					if err == usbwallet.ErrTrezorPINNeeded {
+						go api.openTrezor(event.Wallet.URL())
+					}
+				}
+			case accounts.WalletOpened:
+				status, _ := event.Wallet.Status()
+				log4j.Info("New wallet appeared", "url", event.Wallet.URL(), "status", status)
+
+				derivationPath := accounts.DefaultBaseDerivationPath
+				if event.Wallet.URL().Scheme == "ledger" {
+					derivationPath = accounts.DefaultLedgerBaseDerivationPath
+				}
+				var nextPath = derivationPath
+				for i := 0; i < numberOfAccountsToDerive; i++ {
+					acc, err := event.Wallet.Derive(nextPath, true)
+					if err != nil {
+						log4j.Warn("account derivation failed", "error", err)
+					} else {
+						log4j.Info("derived account", "address", acc.Address)
+					}
+					nextPath[len(nextPath)-1]++
+				}
+			case accounts.WalletDropped:
+				log4j.Info("Old wallet dropped", "url", event.Wallet.URL())
+				event.Wallet.Close()
+			}
+		}
+	}()
 }
 
 func (api *SignerAPI) List(ctx context.Context) ([]common.Address, error) {

@@ -58,6 +58,10 @@ func mixAddr(a string) (*common.MixedcaseAddress, error) {
 
 type alwaysDenyUI struct{}
 
+func (alwaysDenyUI) OnInputRequired(info core.UserInputRequest) (core.UserInputResponse, error) {
+	return core.UserInputResponse{}, nil
+}
+
 func (alwaysDenyUI) OnSignerStartup(info core.StartupInfo) {
 }
 
@@ -182,6 +186,11 @@ func TestSignTxRequest(t *testing.T) {
 
 type dummyUI struct {
 	calls []string
+}
+
+func (d *dummyUI) OnInputRequired(info core.UserInputRequest) (core.UserInputResponse, error) {
+	d.calls = append(d.calls, "OnInputRequired")
+	return core.UserInputResponse{}, nil
 }
 
 func (d *dummyUI) ApproveTx(request *core.SignTxRequest) (core.SignTxResponse, error) {
@@ -476,6 +485,11 @@ func TestLimitWindow(t *testing.T) {
 
 type dontCallMe struct {
 	t *testing.T
+}
+
+func (d *dontCallMe) OnInputRequired(info core.UserInputRequest) (core.UserInputResponse, error) {
+	d.t.Fatalf("Did not expect next-handler to be called")
+	return core.UserInputResponse{}, nil
 }
 
 func (d *dontCallMe) OnSignerStartup(info core.StartupInfo) {
