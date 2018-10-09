@@ -27,7 +27,7 @@ type ChainIndexerBackend interface {
 type ChainIndexerChain interface {
 	CurrentHeader() *types.Header
 
-	SubscribeChainEvent(ch chan<- ChainEvent) event.Subscription
+	SubscribeChainHeadEvent(ch chan<- ChainHeadEvent) event.Subscription
 }
 
 type ChainIndexer struct {
@@ -93,8 +93,8 @@ func (c *ChainIndexer) AddCheckpoint(section uint64, shead common.Hash) {
 }
 
 func (c *ChainIndexer) Start(chain ChainIndexerChain) {
-	events := make(chan ChainEvent, 10)
-	sub := chain.SubscribeChainEvent(events)
+	events := make(chan ChainHeadEvent, 10)
+	sub := chain.SubscribeChainHeadEvent(events)
 
 	go c.eventLoop(chain.CurrentHeader(), events, sub)
 }
@@ -132,7 +132,7 @@ func (c *ChainIndexer) Close() error {
 	}
 }
 
-func (c *ChainIndexer) eventLoop(currentHeader *types.Header, events chan ChainEvent, sub event.Subscription) {
+func (c *ChainIndexer) eventLoop(currentHeader *types.Header, events chan ChainHeadEvent, sub event.Subscription) {
 	atomic.StoreUint32(&c.active, 1)
 
 	defer sub.Unsubscribe()
@@ -158,8 +158,10 @@ func (c *ChainIndexer) eventLoop(currentHeader *types.Header, events chan ChainE
 			header := ev.Block.Header()
 			if header.ParentHash != prevHash {
 
-				if h := rawdb.FindCommonAncestor(c.chainDb, prevHeader, header); h != nil {
-					c.newHead(h.Number.Uint64(), true)
+				if rawdb.ReadCanonicalHash(c.chainDb, prevHeader.Number.Uint64()) != prevHash {
+					if h := rawdb.FindCommonAncestor(c.chainDb, prevHeader, header); h != nil {
+						c.newHead(h.Number.Uint64(), true)
+					}
 				}
 			}
 			c.newHead(header.Number.Uint64(), false)

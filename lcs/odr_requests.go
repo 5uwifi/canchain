@@ -62,7 +62,7 @@ func (r *BlockRequest) GetCost(peer *peer) uint64 {
 }
 
 func (r *BlockRequest) CanSend(peer *peer) bool {
-	return peer.HasBlock(r.Hash, r.Number)
+	return peer.HasBlock(r.Hash, r.Number, false)
 }
 
 func (r *BlockRequest) Request(reqID uint64, peer *peer) error {
@@ -107,7 +107,7 @@ func (r *ReceiptsRequest) GetCost(peer *peer) uint64 {
 }
 
 func (r *ReceiptsRequest) CanSend(peer *peer) bool {
-	return peer.HasBlock(r.Hash, r.Number)
+	return peer.HasBlock(r.Hash, r.Number, false)
 }
 
 func (r *ReceiptsRequest) Request(reqID uint64, peer *peer) error {
@@ -158,7 +158,7 @@ func (r *TrieRequest) GetCost(peer *peer) uint64 {
 }
 
 func (r *TrieRequest) CanSend(peer *peer) bool {
-	return peer.HasBlock(r.Id.BlockHash, r.Id.BlockNumber)
+	return peer.HasBlock(r.Id.BlockHash, r.Id.BlockNumber, true)
 }
 
 func (r *TrieRequest) Request(reqID uint64, peer *peer) error {
@@ -217,7 +217,7 @@ func (r *CodeRequest) GetCost(peer *peer) uint64 {
 }
 
 func (r *CodeRequest) CanSend(peer *peer) bool {
-	return peer.HasBlock(r.Id.BlockHash, r.Id.BlockNumber)
+	return peer.HasBlock(r.Id.BlockHash, r.Id.BlockNumber, true)
 }
 
 func (r *CodeRequest) Request(reqID uint64, peer *peer) error {

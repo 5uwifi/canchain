@@ -361,6 +361,7 @@ func (rw *protoRW) ReadMsg() (Msg, error) {
 }
 
 type PeerInfo struct {
+	Enode   string   `json:"ccnode"`
 	ID      string   `json:"id"`
 	Name    string   `json:"name"`
 	Caps    []string `json:"caps"`
@@ -380,6 +381,7 @@ func (p *Peer) Info() *PeerInfo {
 		caps = append(caps, cap.String())
 	}
 	info := &PeerInfo{
+		Enode:     p.Node().String(),
 		ID:        p.ID().String(),
 		Name:      p.Name(),
 		Caps:      caps,

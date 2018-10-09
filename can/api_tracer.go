@@ -320,6 +320,13 @@ func (api *PrivateDebugAPI) TraceBlockFromFile(ctx context.Context, file string,
 	return api.TraceBlock(ctx, blob, config)
 }
 
+func (api *PrivateDebugAPI) TraceBadBlock(ctx context.Context, index int, config *TraceConfig) ([]*txTraceResult, error) {
+	if blocks := api.can.blockchain.BadBlocks(); index < len(blocks) {
+		return api.traceBlock(ctx, blocks[index], config)
+	}
+	return nil, fmt.Errorf("index out of range")
+}
+
 func (api *PrivateDebugAPI) traceBlock(ctx context.Context, block *types.Block, config *TraceConfig) ([]*txTraceResult, error) {
 	if err := api.can.engine.VerifyHeader(api.can.blockchain, block.Header(), true); err != nil {
 		return nil, err

@@ -38,6 +38,29 @@ const tmplSourceGo = `
 
 package {{.Package}}
 
+import (
+	"math/big"
+	"strings"
+
+	canchain "github.com/5uwifi/canchain"
+	"github.com/5uwifi/canchain/accounts/abi"
+	"github.com/5uwifi/canchain/accounts/abi/bind"
+	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/kernel/types"
+	"github.com/5uwifi/canchain/lib/event"
+)
+
+var (
+	_ = big.NewInt
+	_ = strings.NewReader
+	_ = canchain.NotFound
+	_ = abi.U256
+	_ = bind.Bind
+	_ = common.Big1
+	_ = types.BloomLookup
+	_ = event.NewSubscription
+)
+
 {{range $contract := .Contracts}}
 	const {{.Type}}ABI = "{{.InputABI}}"
 
@@ -215,7 +238,7 @@ package {{.Package}}
 			event    string
 
 			logs chan types.Log
-			sub  ethereum.Subscription
+			sub  canchain.Subscription
 			done bool
 			fail error
 		}

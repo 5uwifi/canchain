@@ -1,27 +1,5 @@
 package vm
 
-import (
-	"math/big"
-
-	"github.com/5uwifi/canchain/common"
-)
-
-type destinations map[common.Hash]bitvec
-
-func (d destinations) has(codehash common.Hash, code []byte, dest *big.Int) bool {
-	udest := dest.Uint64()
-	if dest.BitLen() >= 63 || udest >= uint64(len(code)) {
-		return false
-	}
-
-	m, analysed := d[codehash]
-	if !analysed {
-		m = codeBitmap(code)
-		d[codehash] = m
-	}
-	return OpCode(code[udest]) == JUMPDEST && m.codeSegment(udest)
-}
-
 type bitvec []byte
 
 func (bits *bitvec) set(pos uint64) {

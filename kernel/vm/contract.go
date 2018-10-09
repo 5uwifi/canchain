@@ -19,7 +19,8 @@ type Contract struct {
 	caller        ContractRef
 	self          ContractRef
 
-	jumpdests destinations
+	jumpdests map[common.Hash]bitvec
+	analysis  bitvec
 
 	Code     []byte
 	CodeHash common.Hash
@@ -28,19 +29,15 @@ type Contract struct {
 
 	Gas   uint64
 	value *big.Int
-
-	Args []byte
-
-	DelegateCall bool
 }
 
 func NewContract(caller ContractRef, object ContractRef, value *big.Int, gas uint64) *Contract {
-	c := &Contract{CallerAddress: caller.Address(), caller: caller, self: object, Args: nil}
+	c := &Contract{CallerAddress: caller.Address(), caller: caller, self: object}
 
 	if parent, ok := caller.(*Contract); ok {
 		c.jumpdests = parent.jumpdests
 	} else {
-		c.jumpdests = make(destinations)
+		c.jumpdests = make(map[common.Hash]bitvec)
 	}
 
 	c.Gas = gas
@@ -49,8 +46,29 @@ func NewContract(caller ContractRef, object ContractRef, value *big.Int, gas uin
 	return c
 }
 
+func (c *Contract) validJumpdest(dest *big.Int) bool {
+	udest := dest.Uint64()
+	if dest.BitLen() >= 63 || udest >= uint64(len(c.Code)) {
+		return false
+	}
+	if OpCode(c.Code[udest]) != JUMPDEST {
+		return false
+	}
+	if c.CodeHash != (common.Hash{}) {
+		analysis, exist := c.jumpdests[c.CodeHash]
+		if !exist {
+			analysis = codeBitmap(c.Code)
+			c.jumpdests[c.CodeHash] = analysis
+		}
+		return analysis.codeSegment(udest)
+	}
+	if c.analysis == nil {
+		c.analysis = codeBitmap(c.Code)
+	}
+	return c.analysis.codeSegment(udest)
+}
+
 func (c *Contract) AsDelegate() *Contract {
-	c.DelegateCall = true
 	parent := c.caller.(*Contract)
 	c.CallerAddress = parent.CallerAddress
 	c.value = parent.value
@@ -90,13 +108,14 @@ func (c *Contract) Value() *big.Int {
 	return c.value
 }
 
-func (c *Contract) SetCode(hash common.Hash, code []byte) {
-	c.Code = code
-	c.CodeHash = hash
-}
-
 func (c *Contract) SetCallCode(addr *common.Address, hash common.Hash, code []byte) {
 	c.Code = code
 	c.CodeHash = hash
+	c.CodeAddr = addr
+}
+
+func (c *Contract) SetCodeOptionalHash(addr *common.Address, codeAndHash *codeAndHash) {
+	c.Code = codeAndHash.code
+	c.CodeHash = codeAndHash.hash
 	c.CodeAddr = addr
 }

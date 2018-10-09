@@ -96,7 +96,7 @@ func testAccess(t *testing.T, protocol int, fn accessTestFn) {
 	client.peers.Register(client.rPeer)
 	time.Sleep(time.Millisecond * 10)
 	client.rPeer.lock.Lock()
-	client.rPeer.hasBlock = func(common.Hash, uint64) bool { return true }
+	client.rPeer.hasBlock = func(common.Hash, uint64, bool) bool { return true }
 	client.rPeer.lock.Unlock()
 	test(5)
 }

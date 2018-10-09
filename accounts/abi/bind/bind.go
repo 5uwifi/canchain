@@ -3,13 +3,13 @@ package bind
 import (
 	"bytes"
 	"fmt"
+	"go/format"
 	"regexp"
 	"strings"
 	"text/template"
 	"unicode"
 
 	"github.com/5uwifi/canchain/accounts/abi"
-	"golang.org/x/tools/imports"
 )
 
 type Lang int
@@ -110,7 +110,7 @@ func Bind(types []string, abis []string, bytecodes []string, pkg string, lang La
 		return "", err
 	}
 	if lang == LangGo {
-		code, err := imports.Process(".", buffer.Bytes(), nil)
+		code, err := format.Source(buffer.Bytes())
 		if err != nil {
 			return "", fmt.Errorf("%v\n%s", err, buffer)
 		}

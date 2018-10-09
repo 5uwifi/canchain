@@ -15,8 +15,9 @@ import (
 )
 
 const (
-	blockDelayTimeout = time.Second * 10
-	maxNodeCount      = 20
+	blockDelayTimeout    = time.Second * 10
+	maxNodeCount         = 20
+	serverStateAvailable = 100
 )
 
 type lightFetcher struct {
@@ -175,8 +176,8 @@ func (f *lightFetcher) syncLoop() {
 
 func (f *lightFetcher) registerPeer(p *peer) {
 	p.lock.Lock()
-	p.hasBlock = func(hash common.Hash, number uint64) bool {
-		return f.peerHasBlock(p, hash, number)
+	p.hasBlock = func(hash common.Hash, number uint64, hasState bool) bool {
+		return f.peerHasBlock(p, hash, number, hasState)
 	}
 	p.lock.Unlock()
 
@@ -291,17 +292,23 @@ func (f *lightFetcher) announce(p *peer, head *announceData) {
 	f.requestChn <- true
 }
 
-func (f *lightFetcher) peerHasBlock(p *peer, hash common.Hash, number uint64) bool {
+func (f *lightFetcher) peerHasBlock(p *peer, hash common.Hash, number uint64, hasState bool) bool {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-
-	if f.syncing {
-		return true
-	}
 
 	fp := f.peers[p]
 	if fp == nil || fp.root == nil {
 		return false
+	}
+
+	if hasState {
+		if fp.lastAnnounced == nil || fp.lastAnnounced.number > number+serverStateAvailable {
+			return false
+		}
+	}
+
+	if f.syncing {
+		return true
 	}
 
 	if number >= fp.root.number {

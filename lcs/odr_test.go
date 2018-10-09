@@ -172,7 +172,7 @@ func testOdr(t *testing.T, protocol int, expFail uint64, fn odrTestFn) {
 	client.peers.Register(client.rPeer)
 	time.Sleep(time.Millisecond * 10)
 	client.peers.lock.Lock()
-	client.rPeer.hasBlock = func(common.Hash, uint64) bool { return true }
+	client.rPeer.hasBlock = func(common.Hash, uint64, bool) bool { return true }
 	client.peers.lock.Unlock()
 	test(5)
 	client.peers.Unregister(client.rPeer.id)
