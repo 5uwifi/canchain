@@ -27,6 +27,8 @@ type Event struct {
 	Conn *Conn `json:"conn,omitempty"`
 
 	Msg *Msg `json:"msg,omitempty"`
+
+	Data interface{} `json:"data"`
 }
 
 func NewEvent(v interface{}) *Event {

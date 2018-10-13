@@ -144,6 +144,18 @@ func TestDirty(t *testing.T) {
 	}
 }
 
+func TestSeq(t *testing.T) {
+	var r Record
+
+	assert.Equal(t, uint64(0), r.Seq())
+	r.Set(UDP(1))
+	assert.Equal(t, uint64(0), r.Seq())
+	signTest([]byte{5}, &r)
+	assert.Equal(t, uint64(0), r.Seq())
+	r.Set(UDP(2))
+	assert.Equal(t, uint64(1), r.Seq())
+}
+
 func TestGetSetOverwrite(t *testing.T) {
 	var r Record
 

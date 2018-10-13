@@ -12,12 +12,17 @@ import (
 	"github.com/5uwifi/canchain/lib/p2p/enr"
 )
 
-func newTestTable(t transport) (*Table, *cnode.DB) {
+var nullNode *cnode.Node
+
+func init() {
 	var r enr.Record
 	r.Set(enr.IP{0, 0, 0, 0})
-	n := cnode.SignNull(&r, cnode.ID{})
+	nullNode = cnode.SignNull(&r, cnode.ID{})
+}
+
+func newTestTable(t transport) (*Table, *cnode.DB) {
 	db, _ := cnode.OpenDB("")
-	tab, _ := newTable(t, n, db, nil)
+	tab, _ := newTable(t, db, nil)
 	return tab, db
 }
 
@@ -50,10 +55,10 @@ func intIP(i int) net.IP {
 }
 
 func fillBucket(tab *Table, n *node) (last *node) {
-	ld := cnode.LogDist(tab.self.ID(), n.ID())
+	ld := cnode.LogDist(tab.self().ID(), n.ID())
 	b := tab.bucket(n.ID())
 	for len(b.entries) < bucketSize {
-		b.entries = append(b.entries, nodeAtDistance(tab.self.ID(), ld, intIP(ld)))
+		b.entries = append(b.entries, nodeAtDistance(tab.self().ID(), ld, intIP(ld)))
 	}
 	return b.entries[bucketSize-1]
 }
@@ -61,13 +66,23 @@ func fillBucket(tab *Table, n *node) (last *node) {
 type pingRecorder struct {
 	mu           sync.Mutex
 	dead, pinged map[cnode.ID]bool
+	n            *cnode.Node
 }
 
 func newPingRecorder() *pingRecorder {
+	var r enr.Record
+	r.Set(enr.IP{0, 0, 0, 0})
+	n := cnode.SignNull(&r, cnode.ID{})
+
 	return &pingRecorder{
 		dead:   make(map[cnode.ID]bool),
 		pinged: make(map[cnode.ID]bool),
+		n:      n,
 	}
+}
+
+func (t *pingRecorder) self() *cnode.Node {
+	return nullNode
 }
 
 func (t *pingRecorder) findnode(toid cnode.ID, toaddr *net.UDPAddr, target encPubkey) ([]*node, error) {

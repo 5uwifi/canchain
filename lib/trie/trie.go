@@ -32,9 +32,8 @@ func CacheUnloads() int64 {
 type LeafCallback func(leaf []byte, parent common.Hash) error
 
 type Trie struct {
-	db           *Database
-	root         node
-	originalRoot common.Hash
+	db   *Database
+	root node
 
 	cachegen, cachelimit uint16
 }
@@ -52,8 +51,7 @@ func New(root common.Hash, db *Database) (*Trie, error) {
 		panic("trie.New called without a database")
 	}
 	trie := &Trie{
-		db:           db,
-		originalRoot: root,
+		db: db,
 	}
 	if root != (common.Hash{}) && root != emptyRoot {
 		rootnode, err := trie.resolveHash(root[:], nil)

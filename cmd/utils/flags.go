@@ -980,8 +980,10 @@ func checkExclusive(ctx *cli.Context, args ...interface{}) {
 			case string:
 				if ctx.GlobalString(flag.GetName()) == option {
 					name += "=" + option
+					set = append(set, "--"+name)
 				}
 				i++
+				continue
 
 			case cli.Flag:
 			default:

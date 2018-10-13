@@ -3,9 +3,11 @@ package p2p
 import (
 	"bytes"
 	"crypto/ecdsa"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,8 +20,10 @@ import (
 	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/discover"
 	"github.com/5uwifi/canchain/lib/p2p/discv5"
+	"github.com/5uwifi/canchain/lib/p2p/enr"
 	"github.com/5uwifi/canchain/lib/p2p/nat"
 	"github.com/5uwifi/canchain/lib/p2p/netutil"
+	"github.com/5uwifi/canchain/lib/rlp"
 )
 
 const (
@@ -87,6 +91,8 @@ type Server struct {
 	lock    sync.Mutex
 	running bool
 
+	nodedb       *cnode.DB
+	localnode    *cnode.LocalNode
 	ntab         discoverTable
 	listener     net.Listener
 	ourHandshake *protoHandshake
@@ -250,40 +256,13 @@ func (srv *Server) SubscribeEvents(ch chan *PeerEvent) event.Subscription {
 
 func (srv *Server) Self() *cnode.Node {
 	srv.lock.Lock()
-	running, listener, ntab := srv.running, srv.listener, srv.ntab
+	ln := srv.localnode
 	srv.lock.Unlock()
 
-	if !running {
+	if ln == nil {
 		return cnode.NewV4(&srv.PrivateKey.PublicKey, net.ParseIP("0.0.0.0"), 0, 0)
 	}
-	return srv.makeSelf(listener, ntab)
-}
-
-func (srv *Server) makeSelf(listener net.Listener, ntab discoverTable) *cnode.Node {
-	if ntab == nil {
-		addr := srv.tcpAddr(listener)
-		return cnode.NewV4(&srv.PrivateKey.PublicKey, addr.IP, addr.Port, 0)
-	}
-	return ntab.Self()
-}
-
-func (srv *Server) tcpAddr(listener net.Listener) net.TCPAddr {
-	addr := net.TCPAddr{IP: net.IP{0, 0, 0, 0}}
-	if listener == nil {
-		return addr
-	}
-	if a, ok := listener.Addr().(*net.TCPAddr); ok {
-		addr = *a
-	}
-	if srv.NAT != nil {
-		if ip, err := srv.NAT.ExternalIP(); err == nil {
-			addr.IP = ip
-		}
-	}
-	if addr.IP.IsUnspecified() {
-		addr.IP = net.IP{127, 0, 0, 1}
-	}
-	return addr
+	return ln.Node()
 }
 
 func (srv *Server) Stop() {
@@ -334,7 +313,9 @@ func (srv *Server) Start() (err error) {
 	if srv.log == nil {
 		srv.log = log4j.New()
 	}
-	srv.log.Info("Starting P2P networking")
+	if srv.NoDial && srv.ListenAddr == "" {
+		srv.log.Warn("P2P server will be useless, neither dialing nor listening")
+	}
 
 	if srv.PrivateKey == nil {
 		return fmt.Errorf("Server.PrivateKey must be set to a non-nil key")
@@ -356,63 +337,111 @@ func (srv *Server) Start() (err error) {
 	srv.peerOp = make(chan peerOpFunc)
 	srv.peerOpDone = make(chan struct{})
 
-	var (
-		conn      *net.UDPConn
-		sconn     *sharedUDPConn
-		realaddr  *net.UDPAddr
-		unhandled chan discover.ReadPacket
-	)
-
-	if !srv.NoDiscovery || srv.DiscoveryV5 {
-		addr, err := net.ResolveUDPAddr("udp", srv.ListenAddr)
-		if err != nil {
+	if err := srv.setupLocalNode(); err != nil {
+		return err
+	}
+	if srv.ListenAddr != "" {
+		if err := srv.setupListening(); err != nil {
 			return err
 		}
-		conn, err = net.ListenUDP("udp", addr)
-		if err != nil {
-			return err
-		}
-		realaddr = conn.LocalAddr().(*net.UDPAddr)
-		if srv.NAT != nil {
-			if !realaddr.IP.IsLoopback() {
-				go nat.Map(srv.NAT, srv.quit, "udp", realaddr.Port, realaddr.Port, "canchain discovery")
-			}
-			if ext, err := srv.NAT.ExternalIP(); err == nil {
-				realaddr = &net.UDPAddr{IP: ext, Port: realaddr.Port}
-			}
-		}
+	}
+	if err := srv.setupDiscovery(); err != nil {
+		return err
 	}
 
-	if !srv.NoDiscovery && srv.DiscoveryV5 {
-		unhandled = make(chan discover.ReadPacket, 100)
-		sconn = &sharedUDPConn{conn, unhandled}
+	dynPeers := srv.maxDialedConns()
+	dialer := newDialState(srv.localnode.ID(), srv.StaticNodes, srv.BootstrapNodes, srv.ntab, dynPeers, srv.NetRestrict)
+	srv.loopWG.Add(1)
+	go srv.run(dialer)
+	return nil
+}
+
+func (srv *Server) setupLocalNode() error {
+	pubkey := crypto.FromECDSAPub(&srv.PrivateKey.PublicKey)
+	srv.ourHandshake = &protoHandshake{Version: baseProtocolVersion, Name: srv.Name, ID: pubkey[1:]}
+	for _, p := range srv.Protocols {
+		srv.ourHandshake.Caps = append(srv.ourHandshake.Caps, p.cap())
+	}
+	sort.Sort(capsByNameAndVersion(srv.ourHandshake.Caps))
+
+	db, err := cnode.OpenDB(srv.Config.NodeDatabase)
+	if err != nil {
+		return err
+	}
+	srv.nodedb = db
+	srv.localnode = cnode.NewLocalNode(db, srv.PrivateKey)
+	srv.localnode.SetFallbackIP(net.IP{127, 0, 0, 1})
+	srv.localnode.Set(capsByNameAndVersion(srv.ourHandshake.Caps))
+	for _, p := range srv.Protocols {
+		for _, e := range p.Attributes {
+			srv.localnode.Set(e)
+		}
+	}
+	switch srv.NAT.(type) {
+	case nil:
+	case nat.ExtIP:
+		ip, _ := srv.NAT.ExternalIP()
+		srv.localnode.SetStaticIP(ip)
+	default:
+		srv.loopWG.Add(1)
+		go func() {
+			defer srv.loopWG.Done()
+			if ip, err := srv.NAT.ExternalIP(); err == nil {
+				srv.localnode.SetStaticIP(ip)
+			}
+		}()
+	}
+	return nil
+}
+
+func (srv *Server) setupDiscovery() error {
+	if srv.NoDiscovery && !srv.DiscoveryV5 {
+		return nil
 	}
 
+	addr, err := net.ResolveUDPAddr("udp", srv.ListenAddr)
+	if err != nil {
+		return err
+	}
+	conn, err := net.ListenUDP("udp", addr)
+	if err != nil {
+		return err
+	}
+	realaddr := conn.LocalAddr().(*net.UDPAddr)
+	srv.log.Debug("UDP listener up", "addr", realaddr)
+	if srv.NAT != nil {
+		if !realaddr.IP.IsLoopback() {
+			go nat.Map(srv.NAT, srv.quit, "udp", realaddr.Port, realaddr.Port, "canchain discovery")
+		}
+	}
+	srv.localnode.SetFallbackUDP(realaddr.Port)
+
+	var unhandled chan discover.ReadPacket
+	var sconn *sharedUDPConn
 	if !srv.NoDiscovery {
-		cfg := discover.Config{
-			PrivateKey:   srv.PrivateKey,
-			AnnounceAddr: realaddr,
-			NodeDBPath:   srv.NodeDatabase,
-			NetRestrict:  srv.NetRestrict,
-			Bootnodes:    srv.BootstrapNodes,
-			Unhandled:    unhandled,
+		if srv.DiscoveryV5 {
+			unhandled = make(chan discover.ReadPacket, 100)
+			sconn = &sharedUDPConn{conn, unhandled}
 		}
-		ntab, err := discover.ListenUDP(conn, cfg)
+		cfg := discover.Config{
+			PrivateKey:  srv.PrivateKey,
+			NetRestrict: srv.NetRestrict,
+			Bootnodes:   srv.BootstrapNodes,
+			Unhandled:   unhandled,
+		}
+		ntab, err := discover.ListenUDP(conn, srv.localnode, cfg)
 		if err != nil {
 			return err
 		}
 		srv.ntab = ntab
 	}
-
 	if srv.DiscoveryV5 {
-		var (
-			ntab *discv5.Network
-			err  error
-		)
+		var ntab *discv5.Network
+		var err error
 		if sconn != nil {
-			ntab, err = discv5.ListenUDP(srv.PrivateKey, sconn, realaddr, "", srv.NetRestrict)
+			ntab, err = discv5.ListenUDP(srv.PrivateKey, sconn, "", srv.NetRestrict)
 		} else {
-			ntab, err = discv5.ListenUDP(srv.PrivateKey, conn, realaddr, "", srv.NetRestrict)
+			ntab, err = discv5.ListenUDP(srv.PrivateKey, conn, "", srv.NetRestrict)
 		}
 		if err != nil {
 			return err
@@ -422,30 +451,10 @@ func (srv *Server) Start() (err error) {
 		}
 		srv.DiscV5 = ntab
 	}
-
-	dynPeers := srv.maxDialedConns()
-	dialer := newDialState(srv.StaticNodes, srv.BootstrapNodes, srv.ntab, dynPeers, srv.NetRestrict)
-
-	pubkey := crypto.FromECDSAPub(&srv.PrivateKey.PublicKey)
-	srv.ourHandshake = &protoHandshake{Version: baseProtocolVersion, Name: srv.Name, ID: pubkey[1:]}
-	for _, p := range srv.Protocols {
-		srv.ourHandshake.Caps = append(srv.ourHandshake.Caps, p.cap())
-	}
-	if srv.ListenAddr != "" {
-		if err := srv.startListening(); err != nil {
-			return err
-		}
-	}
-	if srv.NoDial && srv.ListenAddr == "" {
-		srv.log.Warn("P2P server will be useless, neither dialing nor listening")
-	}
-
-	srv.loopWG.Add(1)
-	go srv.run(dialer)
 	return nil
 }
 
-func (srv *Server) startListening() error {
+func (srv *Server) setupListening() error {
 	listener, err := net.Listen("tcp", srv.ListenAddr)
 	if err != nil {
 		return err
@@ -453,8 +462,11 @@ func (srv *Server) startListening() error {
 	laddr := listener.Addr().(*net.TCPAddr)
 	srv.ListenAddr = laddr.String()
 	srv.listener = listener
+	srv.localnode.Set(enr.TCP(laddr.Port))
+
 	srv.loopWG.Add(1)
 	go srv.listenLoop()
+
 	if !laddr.IP.IsLoopback() && srv.NAT != nil {
 		srv.loopWG.Add(1)
 		go func() {
@@ -473,7 +485,10 @@ type dialer interface {
 }
 
 func (srv *Server) run(dialstate dialer) {
+	srv.log.Info("Started P2P networking", "self", srv.localnode.Node())
 	defer srv.loopWG.Done()
+	defer srv.nodedb.Close()
+
 	var (
 		peers        = make(map[cnode.ID]*Peer)
 		inboundCount = 0
@@ -621,7 +636,7 @@ func (srv *Server) encHandshakeChecks(peers map[cnode.ID]*Peer, inboundCount int
 		return DiscTooManyPeers
 	case peers[c.node.ID()] != nil:
 		return DiscAlreadyConnected
-	case c.node.ID() == srv.Self().ID():
+	case c.node.ID() == srv.localnode.ID():
 		return DiscSelf
 	default:
 		return nil
@@ -642,13 +657,9 @@ func (srv *Server) maxDialedConns() int {
 	return srv.MaxPeers / r
 }
 
-type tempError interface {
-	Temporary() bool
-}
-
 func (srv *Server) listenLoop() {
 	defer srv.loopWG.Done()
-	srv.log.Info("RLPx listener up", "self", srv.Self())
+	srv.log.Debug("TCP listener up", "addr", srv.listener.Addr())
 
 	tokens := defaultMaxPendingPeers
 	if srv.MaxPendingPeers > 0 {
@@ -668,7 +679,7 @@ func (srv *Server) listenLoop() {
 		)
 		for {
 			fd, err = srv.listener.Accept()
-			if tempErr, ok := err.(tempError); ok && tempErr.Temporary() {
+			if netutil.IsTemporaryError(err) {
 				srv.log.Debug("Temporary read error", "err", err)
 				continue
 			} else if err != nil {
@@ -697,10 +708,6 @@ func (srv *Server) listenLoop() {
 }
 
 func (srv *Server) SetupConn(fd net.Conn, flags connFlag, dialDest *cnode.Node) error {
-	self := srv.Self()
-	if self == nil {
-		return errors.New("shutdown")
-	}
 	c := &conn{fd: fd, transport: srv.newTransport(fd), flags: flags, cont: make(chan error)}
 	err := srv.setupConn(c, flags, dialDest)
 	if err != nil {
@@ -818,6 +825,7 @@ type NodeInfo struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	CCnode string `json:"ccnode"`
+	ENR    string `json:"enr"`
 	IP     string `json:"ip"`
 	Ports  struct {
 		Discovery int `json:"discovery"`
@@ -829,7 +837,6 @@ type NodeInfo struct {
 
 func (srv *Server) NodeInfo() *NodeInfo {
 	node := srv.Self()
-
 	info := &NodeInfo{
 		Name:       srv.Name,
 		CCnode:     node.String(),
@@ -840,6 +847,9 @@ func (srv *Server) NodeInfo() *NodeInfo {
 	}
 	info.Ports.Discovery = node.UDP()
 	info.Ports.Listener = node.TCP()
+	if enc, err := rlp.EncodeToBytes(node.Record()); err == nil {
+		info.ENR = "0x" + hex.EncodeToString(enc)
+	}
 
 	for _, proto := range srv.Protocols {
 		if _, ok := info.Protocols[proto.Name]; !ok {

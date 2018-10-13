@@ -462,10 +462,22 @@ func (n *Node) IPCEndpoint() string {
 }
 
 func (n *Node) HTTPEndpoint() string {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	if n.httpListener != nil {
+		return n.httpListener.Addr().String()
+	}
 	return n.httpEndpoint
 }
 
 func (n *Node) WSEndpoint() string {
+	n.lock.Lock()
+	defer n.lock.Unlock()
+
+	if n.wsListener != nil {
+		return n.wsListener.Addr().String()
+	}
 	return n.wsEndpoint
 }
 

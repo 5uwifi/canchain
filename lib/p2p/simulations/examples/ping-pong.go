@@ -49,14 +49,6 @@ func main() {
 		log4j.Info("using exec adapter", "tmpdir", tmpdir)
 		adapter = adapters.NewExecAdapter(tmpdir)
 
-	case "docker":
-		log4j.Info("using docker adapter")
-		var err error
-		adapter, err = adapters.NewDockerAdapter()
-		if err != nil {
-			log4j.Crit("error creating docker adapter", "err", err)
-		}
-
 	default:
 		log4j.Crit(fmt.Sprintf("unknown node adapter %q", *adapterType))
 	}

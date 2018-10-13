@@ -71,6 +71,11 @@ func (n *Node) Pubkey() *ecdsa.PublicKey {
 	return &key
 }
 
+func (n *Node) Record() *enr.Record {
+	cpy := n.r
+	return &cpy
+}
+
 func (n *Node) ValidateComplete() error {
 	if n.Incomplete() {
 		return errors.New("incomplete node")

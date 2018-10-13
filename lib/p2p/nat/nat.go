@@ -86,20 +86,13 @@ func Map(m Interface, c chan struct{}, protocol string, extport, intport int, na
 	}
 }
 
-func ExtIP(ip net.IP) Interface {
-	if ip == nil {
-		panic("IP must not be nil")
-	}
-	return extIP(ip)
-}
+type ExtIP net.IP
 
-type extIP net.IP
+func (n ExtIP) ExternalIP() (net.IP, error) { return net.IP(n), nil }
+func (n ExtIP) String() string              { return fmt.Sprintf("ExtIP(%v)", net.IP(n)) }
 
-func (n extIP) ExternalIP() (net.IP, error) { return net.IP(n), nil }
-func (n extIP) String() string              { return fmt.Sprintf("ExtIP(%v)", net.IP(n)) }
-
-func (extIP) AddMapping(string, int, int, string, time.Duration) error { return nil }
-func (extIP) DeleteMapping(string, int, int) error                     { return nil }
+func (ExtIP) AddMapping(string, int, int, string, time.Duration) error { return nil }
+func (ExtIP) DeleteMapping(string, int, int) error                     { return nil }
 
 func Any() Interface {
 	return startautodisc("UPnP or NAT-PMP", func() Interface {

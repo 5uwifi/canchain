@@ -1,7 +1,7 @@
 package adapters
 
 import (
-	"bufio"
+	"bytes"
 	"context"
 	"crypto/ecdsa"
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -26,6 +27,10 @@ import (
 	"github.com/5uwifi/canchain/rpc"
 	"golang.org/x/net/websocket"
 )
+
+func init() {
+	reexec.Register("p2p-node", execP2PNode)
+}
 
 type ExecAdapter struct {
 	BaseDir string
@@ -117,7 +122,6 @@ func (n *ExecNode) Start(snapshots map[string][]byte) (err error) {
 	}
 	defer func() {
 		if err != nil {
-			log4j.Error("node failed to start", "err", err)
 			n.Stop()
 		}
 	}()
@@ -133,52 +137,69 @@ func (n *ExecNode) Start(snapshots map[string][]byte) (err error) {
 		return fmt.Errorf("error generating node config: %s", err)
 	}
 
-	stderrR, stderrW := io.Pipe()
-	stderr := io.MultiWriter(os.Stderr, stderrW)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	statusURL, statusC := n.waitForStartupJSON(ctx)
 
 	cmd := n.newCmd()
 	cmd.Stdout = os.Stdout
-	cmd.Stderr = stderr
-	cmd.Env = append(os.Environ(), fmt.Sprintf("_P2P_NODE_CONFIG=%s", confData))
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(),
+		envStatusURL+"="+statusURL,
+		envNodeConfig+"="+string(confData),
+	)
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("error starting node: %s", err)
 	}
 	n.Cmd = cmd
 
-	var wsAddr string
-	wsAddrC := make(chan string)
-	go func() {
-		s := bufio.NewScanner(stderrR)
-		for s.Scan() {
-			if strings.Contains(s.Text(), "WebSocket endpoint opened") {
-				wsAddrC <- wsAddrPattern.FindString(s.Text())
-			}
-		}
-	}()
-	select {
-	case wsAddr = <-wsAddrC:
-		if wsAddr == "" {
-			return errors.New("failed to read WebSocket address from stderr")
-		}
-	case <-time.After(10 * time.Second):
-		return errors.New("timed out waiting for WebSocket address on stderr")
+	status := <-statusC
+	if status.Err != "" {
+		return errors.New(status.Err)
 	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	client, err := rpc.DialWebsocket(ctx, wsAddr, "")
+	client, err := rpc.DialWebsocket(ctx, status.WSEndpoint, "http://localhost")
 	if err != nil {
-		return fmt.Errorf("error dialing rpc websocket: %s", err)
+		return fmt.Errorf("can't connect to RPC server: %v", err)
 	}
-	var info p2p.NodeInfo
-	if err := client.CallContext(ctx, &info, "admin_nodeInfo"); err != nil {
-		return fmt.Errorf("error getting node info: %s", err)
-	}
-	n.client = client
-	n.wsAddr = wsAddr
-	n.Info = &info
 
+	n.client = client
+	n.wsAddr = status.WSEndpoint
+	n.Info = status.NodeInfo
 	return nil
+}
+
+func (n *ExecNode) waitForStartupJSON(ctx context.Context) (string, chan nodeStartupJSON) {
+	var (
+		ch       = make(chan nodeStartupJSON, 1)
+		quitOnce sync.Once
+		srv      http.Server
+	)
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		ch <- nodeStartupJSON{Err: err.Error()}
+		return "", ch
+	}
+	quit := func(status nodeStartupJSON) {
+		quitOnce.Do(func() {
+			l.Close()
+			ch <- status
+		})
+	}
+	srv.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var status nodeStartupJSON
+		if err := json.NewDecoder(r.Body).Decode(&status); err != nil {
+			status.Err = fmt.Sprintf("can't decode startup report: %v", err)
+		}
+		quit(status)
+	})
+	go srv.Serve(l)
+	go func() {
+		<-ctx.Done()
+		quit(nodeStartupJSON{Err: "didn't get startup report"})
+	}()
+
+	url := "http://" + l.Addr().String()
+	return url, ch
 }
 
 func (n *ExecNode) execCommand() *exec.Cmd {
@@ -260,10 +281,6 @@ func (n *ExecNode) Snapshots() (map[string][]byte, error) {
 	return snapshots, n.client.Call(&snapshots, "simulation_snapshot")
 }
 
-func init() {
-	reexec.Register("p2p-node", execP2PNode)
-}
-
 type execNodeConfig struct {
 	Stack     node.Config       `json:"stack"`
 	Node      *NodeConfig       `json:"node"`
@@ -271,55 +288,67 @@ type execNodeConfig struct {
 	PeerAddrs map[string]string `json:"peer_addrs,omitempty"`
 }
 
-func ExternalIP() net.IP {
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		log4j.Crit("error getting IP address", "err", err)
-	}
-	for _, addr := range addrs {
-		if ip, ok := addr.(*net.IPNet); ok && !ip.IP.IsLoopback() && !ip.IP.IsLinkLocalUnicast() {
-			return ip.IP
-		}
-	}
-	log4j.Warn("unable to determine explicit IP address, falling back to loopback")
-	return net.IP{127, 0, 0, 1}
-}
-
 func execP2PNode() {
 	glogger := log4j.NewGlogHandler(log4j.StreamHandler(os.Stderr, log4j.LogfmtFormat()))
 	glogger.Verbosity(log4j.LvlInfo)
 	log4j.Root().SetHandler(glogger)
+	statusURL := os.Getenv(envStatusURL)
+	if statusURL == "" {
+		log4j.Crit("missing " + envStatusURL)
+	}
 
+	var status nodeStartupJSON
+	stack, stackErr := startExecNodeStack()
+	if stackErr != nil {
+		status.Err = stackErr.Error()
+	} else {
+		status.WSEndpoint = "ws://" + stack.WSEndpoint()
+		status.NodeInfo = stack.Server().NodeInfo()
+	}
+
+	statusJSON, _ := json.Marshal(status)
+	if _, err := http.Post(statusURL, "application/json", bytes.NewReader(statusJSON)); err != nil {
+		log4j.Crit("Can't post startup info", "url", statusURL, "err", err)
+	}
+	if stackErr != nil {
+		os.Exit(1)
+	}
+
+	go func() {
+		sigc := make(chan os.Signal, 1)
+		signal.Notify(sigc, syscall.SIGTERM)
+		defer signal.Stop(sigc)
+		<-sigc
+		log4j.Info("Received SIGTERM, shutting down...")
+		stack.Stop()
+	}()
+	stack.Wait()
+}
+
+func startExecNodeStack() (*node.Node, error) {
 	serviceNames := strings.Split(os.Args[1], ",")
 
-	confEnv := os.Getenv("_P2P_NODE_CONFIG")
+	confEnv := os.Getenv(envNodeConfig)
 	if confEnv == "" {
-		log4j.Crit("missing _P2P_NODE_CONFIG")
+		return nil, fmt.Errorf("missing " + envNodeConfig)
 	}
 	var conf execNodeConfig
 	if err := json.Unmarshal([]byte(confEnv), &conf); err != nil {
-		log4j.Crit("error decoding _P2P_NODE_CONFIG", "err", err)
+		return nil, fmt.Errorf("error decoding %s: %v", envNodeConfig, err)
 	}
 	conf.Stack.P2P.PrivateKey = conf.Node.PrivateKey
 	conf.Stack.Logger = log4j.New("node.id", conf.Node.ID.String())
 
-	if strings.HasPrefix(conf.Stack.P2P.ListenAddr, ":") {
-		conf.Stack.P2P.ListenAddr = ExternalIP().String() + conf.Stack.P2P.ListenAddr
-	}
-	if conf.Stack.WSHost == "0.0.0.0" {
-		conf.Stack.WSHost = ExternalIP().String()
-	}
-
 	stack, err := node.New(&conf.Stack)
 	if err != nil {
-		log4j.Crit("error creating node stack", "err", err)
+		return nil, fmt.Errorf("error creating node stack: %v", err)
 	}
 
 	services := make(map[string]node.Service, len(serviceNames))
 	for _, name := range serviceNames {
 		serviceFunc, exists := serviceFuncs[name]
 		if !exists {
-			log4j.Crit("unknown node service", "name", name)
+			return nil, fmt.Errorf("unknown node service %q", err)
 		}
 		constructor := func(nodeCtx *node.ServiceContext) (node.Service, error) {
 			ctx := &ServiceContext{
@@ -338,30 +367,32 @@ func execP2PNode() {
 			return service, nil
 		}
 		if err := stack.Register(constructor); err != nil {
-			log4j.Crit("error starting service", "name", name, "err", err)
+			return stack, fmt.Errorf("error registering service %q: %v", name, err)
 		}
 	}
 
-	if err := stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
+	err = stack.Register(func(ctx *node.ServiceContext) (node.Service, error) {
 		return &snapshotService{services}, nil
-	}); err != nil {
-		log4j.Crit("error starting snapshot service", "err", err)
+	})
+	if err != nil {
+		return stack, fmt.Errorf("error starting snapshot service: %v", err)
 	}
 
-	if err := stack.Start(); err != nil {
-		log4j.Crit("error stating node stack", "err", err)
+	if err = stack.Start(); err != nil {
+		err = fmt.Errorf("error starting stack: %v", err)
 	}
+	return stack, err
+}
 
-	go func() {
-		sigc := make(chan os.Signal, 1)
-		signal.Notify(sigc, syscall.SIGTERM)
-		defer signal.Stop(sigc)
-		<-sigc
-		log4j.Info("Received SIGTERM, shutting down...")
-		stack.Stop()
-	}()
+const (
+	envStatusURL  = "_P2P_STATUS_URL"
+	envNodeConfig = "_P2P_NODE_CONFIG"
+)
 
-	stack.Wait()
+type nodeStartupJSON struct {
+	Err        string
+	WSEndpoint string
+	NodeInfo   *p2p.NodeInfo
 }
 
 type snapshotService struct {

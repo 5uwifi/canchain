@@ -84,7 +84,7 @@ func (net *Network) NewNodeWithConfig(conf *adapters.NodeConfig) (*Node, error) 
 		Node:   adapterNode,
 		Config: conf,
 	}
-	log4j.Trace(fmt.Sprintf("node %v created", conf.ID))
+	log4j.Trace("Node created", "id", conf.ID)
 	net.nodeMap[conf.ID] = len(net.Nodes)
 	net.Nodes = append(net.Nodes, node)
 
@@ -128,6 +128,7 @@ func (net *Network) Start(id cnode.ID) error {
 func (net *Network) startWithSnapshots(id cnode.ID, snapshots map[string][]byte) error {
 	net.lock.Lock()
 	defer net.lock.Unlock()
+
 	node := net.getNode(id)
 	if node == nil {
 		return fmt.Errorf("node %v does not exist", id)
@@ -135,13 +136,13 @@ func (net *Network) startWithSnapshots(id cnode.ID, snapshots map[string][]byte)
 	if node.Up {
 		return fmt.Errorf("node %v already up", id)
 	}
-	log4j.Trace(fmt.Sprintf("starting node %v: %v using %v", id, node.Up, net.nodeAdapter.Name()))
+	log4j.Trace("Starting node", "id", id, "adapter", net.nodeAdapter.Name())
 	if err := node.Start(snapshots); err != nil {
-		log4j.Warn(fmt.Sprintf("start up failed: %v", err))
+		log4j.Warn("Node startup failed", "id", id, "err", err)
 		return err
 	}
 	node.Up = true
-	log4j.Info(fmt.Sprintf("started node %v: %v", id, node.Up))
+	log4j.Info("Started node", "id", id)
 
 	net.events.Send(NewEvent(node))
 
@@ -166,7 +167,6 @@ func (net *Network) watchPeerEvents(id cnode.ID, events chan *p2p.PeerEvent, sub
 		defer net.lock.Unlock()
 		node := net.getNode(id)
 		if node == nil {
-			log4j.Error("Can not find node for id", "id", id)
 			return
 		}
 		node.Up = false
@@ -197,7 +197,7 @@ func (net *Network) watchPeerEvents(id cnode.ID, events chan *p2p.PeerEvent, sub
 
 		case err := <-sub.Err():
 			if err != nil {
-				log4j.Error(fmt.Sprintf("error getting peer events for node %v", id), "err", err)
+				log4j.Error("Error in peer event subscription", "id", id, "err", err)
 			}
 			return
 		}
@@ -206,7 +206,6 @@ func (net *Network) watchPeerEvents(id cnode.ID, events chan *p2p.PeerEvent, sub
 
 func (net *Network) Stop(id cnode.ID) error {
 	net.lock.Lock()
-	defer net.lock.Unlock()
 	node := net.getNode(id)
 	if node == nil {
 		return fmt.Errorf("node %v does not exist", id)
@@ -214,18 +213,23 @@ func (net *Network) Stop(id cnode.ID) error {
 	if !node.Up {
 		return fmt.Errorf("node %v already down", id)
 	}
-	if err := node.Stop(); err != nil {
+	node.Up = false
+	net.lock.Unlock()
+
+	err := node.Stop()
+	if err != nil {
+		net.lock.Lock()
+		node.Up = true
+		net.lock.Unlock()
 		return err
 	}
-	node.Up = false
-	log4j.Info(fmt.Sprintf("stop node %v: %v", id, node.Up))
-
+	log4j.Info("Stopped node", "id", id, "err", err)
 	net.events.Send(ControlEvent(node))
 	return nil
 }
 
 func (net *Network) Connect(oneID, otherID cnode.ID) error {
-	log4j.Debug(fmt.Sprintf("connecting %s to %s", oneID, otherID))
+	log4j.Debug("Connecting nodes with addPeer", "id", oneID, "other", otherID)
 	conn, err := net.InitConn(oneID, otherID)
 	if err != nil {
 		return err
@@ -411,19 +415,19 @@ func (net *Network) InitConn(oneID, otherID cnode.ID) (*Conn, error) {
 
 	err = conn.nodesUp()
 	if err != nil {
-		log4j.Trace(fmt.Sprintf("nodes not up: %v", err))
+		log4j.Trace("Nodes not up", "err", err)
 		return nil, fmt.Errorf("nodes not up: %v", err)
 	}
-	log4j.Debug("InitConn - connection initiated")
+	log4j.Debug("Connection initiated", "id", oneID, "other", otherID)
 	conn.initiated = time.Now()
 	return conn, nil
 }
 
 func (net *Network) Shutdown() {
 	for _, node := range net.Nodes {
-		log4j.Debug(fmt.Sprintf("stopping node %s", node.ID().TerminalString()))
+		log4j.Debug("Stopping node", "id", node.ID())
 		if err := node.Stop(); err != nil {
-			log4j.Warn(fmt.Sprintf("error stopping node %s", node.ID().TerminalString()), "err", err)
+			log4j.Warn("Can't stop node", "id", node.ID(), "err", err)
 		}
 	}
 	close(net.quitc)
@@ -603,18 +607,18 @@ func (net *Network) Subscribe(events chan *Event) {
 }
 
 func (net *Network) executeControlEvent(event *Event) {
-	log4j.Trace("execute control event", "type", event.Type, "event", event)
+	log4j.Trace("Executing control event", "type", event.Type, "event", event)
 	switch event.Type {
 	case EventTypeNode:
 		if err := net.executeNodeEvent(event); err != nil {
-			log4j.Error("error executing node event", "event", event, "err", err)
+			log4j.Error("Error executing node event", "event", event, "err", err)
 		}
 	case EventTypeConn:
 		if err := net.executeConnEvent(event); err != nil {
-			log4j.Error("error executing conn event", "event", event, "err", err)
+			log4j.Error("Error executing conn event", "event", event, "err", err)
 		}
 	case EventTypeMsg:
-		log4j.Warn("ignoring control msg event")
+		log4j.Warn("Ignoring control msg event")
 	}
 }
 

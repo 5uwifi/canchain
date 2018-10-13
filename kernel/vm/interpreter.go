@@ -2,8 +2,10 @@ package vm
 
 import (
 	"fmt"
+	"hash"
 	"sync/atomic"
 
+	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/common/math"
 	"github.com/5uwifi/canchain/params"
 )
@@ -24,11 +26,20 @@ type Interpreter interface {
 	CanRun([]byte) bool
 }
 
+type keccakState interface {
+	hash.Hash
+	Read([]byte) (int, error)
+}
+
 type EVMInterpreter struct {
 	evm      *EVM
 	cfg      Config
 	gasTable params.GasTable
-	intPool  *intPool
+
+	intPool *intPool
+
+	hasher    keccakState
+	hasherBuf common.Hash
 
 	readOnly   bool
 	returnData []byte

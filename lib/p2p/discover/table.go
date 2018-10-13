@@ -47,18 +47,17 @@ type Table struct {
 	ips     netutil.DistinctNetSet
 
 	db         *cnode.DB
+	net        transport
 	refreshReq chan chan struct{}
 	initDone   chan struct{}
 	closeReq   chan struct{}
 	closed     chan struct{}
 
 	nodeAddedHook func(*node)
-
-	net  transport
-	self *node
 }
 
 type transport interface {
+	self() *cnode.Node
 	ping(cnode.ID, *net.UDPAddr) error
 	findnode(toid cnode.ID, addr *net.UDPAddr, target encPubkey) ([]*node, error)
 	close()
@@ -70,11 +69,10 @@ type bucket struct {
 	ips          netutil.DistinctNetSet
 }
 
-func newTable(t transport, self *cnode.Node, db *cnode.DB, bootnodes []*cnode.Node) (*Table, error) {
+func newTable(t transport, db *cnode.DB, bootnodes []*cnode.Node) (*Table, error) {
 	tab := &Table{
 		net:        t,
 		db:         db,
-		self:       wrapNode(self),
 		refreshReq: make(chan chan struct{}),
 		initDone:   make(chan struct{}),
 		closeReq:   make(chan struct{}),
@@ -97,6 +95,10 @@ func newTable(t transport, self *cnode.Node, db *cnode.DB, bootnodes []*cnode.No
 	return tab, nil
 }
 
+func (tab *Table) self() *cnode.Node {
+	return tab.net.self()
+}
+
 func (tab *Table) seedRand() {
 	var b [8]byte
 	crand.Read(b[:])
@@ -104,10 +106,6 @@ func (tab *Table) seedRand() {
 	tab.mutex.Lock()
 	tab.rand.Seed(int64(binary.BigEndian.Uint64(b[:])))
 	tab.mutex.Unlock()
-}
-
-func (tab *Table) Self() *cnode.Node {
-	return unwrapNode(tab.self)
 }
 
 func (tab *Table) ReadRandomNodes(buf []*cnode.Node) (n int) {
@@ -146,6 +144,10 @@ func (tab *Table) ReadRandomNodes(buf []*cnode.Node) (n int) {
 }
 
 func (tab *Table) Close() {
+	if tab.net != nil {
+		tab.net.close()
+	}
+
 	select {
 	case <-tab.closed:
 	case tab.closeReq <- struct{}{}:
@@ -204,7 +206,7 @@ func (tab *Table) lookup(targetKey encPubkey, refreshIfEmpty bool) []*node {
 		pendingQueries = 0
 		result         *nodesByDistance
 	)
-	asked[tab.self.ID()] = true
+	asked[tab.self().ID()] = true
 
 	for {
 		tab.mutex.Lock()
@@ -276,8 +278,8 @@ func (tab *Table) loop() {
 		revalidate     = time.NewTimer(tab.nextRevalidateTime())
 		refresh        = time.NewTicker(refreshInterval)
 		copyNodes      = time.NewTicker(copyNodesInterval)
-		revalidateDone = make(chan struct{})
 		refreshDone    = make(chan struct{})
+		revalidateDone chan struct{}
 		waiting        = []chan struct{}{tab.initDone}
 	)
 	defer refresh.Stop()
@@ -307,9 +309,11 @@ loop:
 			}
 			waiting, refreshDone = nil, nil
 		case <-revalidate.C:
+			revalidateDone = make(chan struct{})
 			go tab.doRevalidate(revalidateDone)
 		case <-revalidateDone:
 			revalidate.Reset(tab.nextRevalidateTime())
+			revalidateDone = nil
 		case <-copyNodes.C:
 			go tab.copyLiveNodes()
 		case <-tab.closeReq:
@@ -317,14 +321,14 @@ loop:
 		}
 	}
 
-	if tab.net != nil {
-		tab.net.close()
-	}
 	if refreshDone != nil {
 		<-refreshDone
 	}
 	for _, ch := range waiting {
 		close(ch)
+	}
+	if revalidateDone != nil {
+		<-revalidateDone
 	}
 	close(tab.closed)
 }
@@ -335,7 +339,7 @@ func (tab *Table) doRefresh(done chan struct{}) {
 	tab.loadSeedNodes()
 
 	var key ecdsa.PublicKey
-	if err := tab.self.Load((*cnode.Secp256k1)(&key)); err == nil {
+	if err := tab.self().Load((*cnode.Secp256k1)(&key)); err == nil {
 		tab.lookup(encodePubkey(&key), false)
 	}
 
@@ -435,7 +439,7 @@ func (tab *Table) len() (n int) {
 }
 
 func (tab *Table) bucket(id cnode.ID) *bucket {
-	d := cnode.LogDist(tab.self.ID(), id)
+	d := cnode.LogDist(tab.self().ID(), id)
 	if d <= bucketMinDistance {
 		return tab.buckets[0]
 	}
@@ -443,7 +447,7 @@ func (tab *Table) bucket(id cnode.ID) *bucket {
 }
 
 func (tab *Table) add(n *node) {
-	if n.ID() == tab.self.ID() {
+	if n.ID() == tab.self().ID() {
 		return
 	}
 
@@ -467,7 +471,7 @@ func (tab *Table) stuff(nodes []*node) {
 	defer tab.mutex.Unlock()
 
 	for _, n := range nodes {
-		if n.ID() == tab.self.ID() {
+		if n.ID() == tab.self().ID() {
 			continue
 		}
 		b := tab.bucket(n.ID())
