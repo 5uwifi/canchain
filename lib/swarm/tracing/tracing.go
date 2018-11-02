@@ -9,7 +9,6 @@ import (
 	"github.com/5uwifi/canchain/lib/log4j"
 	jaeger "github.com/uber/jaeger-client-go"
 	jaegercfg "github.com/uber/jaeger-client-go/config"
-	jaegerlog "github.com/uber/jaeger-client-go/log"
 	cli "gopkg.in/urfave/cli.v1"
 )
 
@@ -77,11 +76,8 @@ func initTracer(endpoint, svc string) (closer io.Closer) {
 		},
 	}
 
-	jLogger := jaegerlog.StdLogger
-
 	closer, err := cfg.InitGlobalTracer(
 		svc,
-		jaegercfg.Logger(jLogger),
 	)
 	if err != nil {
 		log4j.Error("Could not initialize Jaeger tracer", "err", err)

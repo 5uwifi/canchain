@@ -186,10 +186,6 @@ func (p *peerConnection) SetHeadersIdle(delivered int) {
 	p.setIdle(p.headerStarted, delivered, &p.headerThroughput, &p.headerIdle)
 }
 
-func (p *peerConnection) SetBlocksIdle(delivered int) {
-	p.setIdle(p.blockStarted, delivered, &p.blockThroughput, &p.blockIdle)
-}
-
 func (p *peerConnection) SetBodiesIdle(delivered int) {
 	p.setIdle(p.blockStarted, delivered, &p.blockThroughput, &p.blockIdle)
 }

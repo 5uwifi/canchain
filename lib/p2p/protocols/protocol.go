@@ -103,6 +103,11 @@ type WrappedMsg struct {
 	Payload []byte
 }
 
+type Hook interface {
+	Send(peer *Peer, size uint32, msg interface{}) error
+	Receive(peer *Peer, size uint32, msg interface{}) error
+}
+
 type Spec struct {
 	Name string
 
@@ -111,6 +116,8 @@ type Spec struct {
 	MaxMsgSize uint32
 
 	Messages []interface{}
+
+	Hook Hook
 
 	initOnce sync.Once
 	codes    map[reflect.Type]uint64
@@ -223,6 +230,14 @@ func (p *Peer) Send(ctx context.Context, msg interface{}) error {
 		Payload: r,
 	}
 
+	if p.spec.Hook != nil {
+		err := p.spec.Hook.Send(p, wmsg.Size, msg)
+		if err != nil {
+			p.Drop(err)
+			return err
+		}
+	}
+
 	code, found := p.spec.GetCode(msg)
 	if !found {
 		return errorf(ErrInvalidMsgType, "%v", code)
@@ -271,6 +286,13 @@ func (p *Peer) handleIncoming(handle func(ctx context.Context, msg interface{}) 
 	}
 	if err := rlp.DecodeBytes(wmsg.Payload, val); err != nil {
 		return errorf(ErrDecode, "<= %v: %v", msg, err)
+	}
+
+	if p.spec.Hook != nil {
+		err := p.spec.Hook.Receive(p, wmsg.Size, val)
+		if err != nil {
+			return err
+		}
 	}
 
 	if err := handle(ctx, val); err != nil {

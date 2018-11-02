@@ -1,6 +1,7 @@
 package state
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
 	"sort"
@@ -24,6 +25,13 @@ var (
 
 	emptyCode = crypto.Keccak256Hash(nil)
 )
+
+type proofList [][]byte
+
+func (n *proofList) Put(key []byte, value []byte) error {
+	*n = append(*n, value)
+	return nil
+}
 
 type StateDB struct {
 	db   Database
@@ -206,6 +214,22 @@ func (self *StateDB) GetState(addr common.Address, hash common.Hash) common.Hash
 		return stateObject.GetState(self.db, hash)
 	}
 	return common.Hash{}
+}
+
+func (self *StateDB) GetProof(a common.Address) ([][]byte, error) {
+	var proof proofList
+	err := self.trie.Prove(crypto.Keccak256(a.Bytes()), 0, &proof)
+	return [][]byte(proof), err
+}
+
+func (self *StateDB) GetStorageProof(a common.Address, key common.Hash) ([][]byte, error) {
+	var proof proofList
+	trie := self.StorageTrie(a)
+	if trie == nil {
+		return proof, errors.New("storage trie for requested address does not exist")
+	}
+	err := trie.Prove(crypto.Keccak256(key.Bytes()), 0, &proof)
+	return [][]byte(proof), err
 }
 
 func (self *StateDB) GetCommittedState(addr common.Address, hash common.Hash) common.Hash {

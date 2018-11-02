@@ -1,6 +1,8 @@
 package metrics
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+)
 
 type Counter interface {
 	Clear()
@@ -17,6 +19,13 @@ func GetOrRegisterCounter(name string, r Registry) Counter {
 	return r.GetOrRegister(name, NewCounter).(Counter)
 }
 
+func GetOrRegisterCounterForced(name string, r Registry) Counter {
+	if nil == r {
+		r = DefaultRegistry
+	}
+	return r.GetOrRegister(name, NewCounterForced).(Counter)
+}
+
 func NewCounter() Counter {
 	if !Enabled {
 		return NilCounter{}
@@ -24,8 +33,21 @@ func NewCounter() Counter {
 	return &StandardCounter{0}
 }
 
+func NewCounterForced() Counter {
+	return &StandardCounter{0}
+}
+
 func NewRegisteredCounter(name string, r Registry) Counter {
 	c := NewCounter()
+	if nil == r {
+		r = DefaultRegistry
+	}
+	r.Register(name, c)
+	return c
+}
+
+func NewRegisteredCounterForced(name string, r Registry) Counter {
+	c := NewCounterForced()
 	if nil == r {
 		r = DefaultRegistry
 	}

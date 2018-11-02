@@ -15,6 +15,7 @@ import (
 	"github.com/5uwifi/canchain/kernel/state"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/kernel/vm"
+	"github.com/5uwifi/canchain/lib/consensus"
 	"github.com/5uwifi/canchain/lib/consensus/ethash"
 	"github.com/5uwifi/canchain/lib/rlp"
 	"github.com/5uwifi/canchain/params"
@@ -29,12 +30,13 @@ func (t *BlockTest) UnmarshalJSON(in []byte) error {
 }
 
 type btJSON struct {
-	Blocks    []btBlock             `json:"blocks"`
-	Genesis   btHeader              `json:"genesisBlockHeader"`
-	Pre       kernel.GenesisAlloc   `json:"pre"`
-	Post      kernel.GenesisAlloc   `json:"postState"`
-	BestBlock common.UnprefixedHash `json:"lastblockhash"`
-	Network   string                `json:"network"`
+	Blocks     []btBlock             `json:"blocks"`
+	Genesis    btHeader              `json:"genesisBlockHeader"`
+	Pre        kernel.GenesisAlloc   `json:"pre"`
+	Post       kernel.GenesisAlloc   `json:"postState"`
+	BestBlock  common.UnprefixedHash `json:"lastblockhash"`
+	Network    string                `json:"network"`
+	SealEngine string                `json:"sealEngine"`
 }
 
 type btBlock struct {
@@ -90,8 +92,13 @@ func (t *BlockTest) Run() error {
 	if gblock.Root() != t.json.Genesis.StateRoot {
 		return fmt.Errorf("genesis block state root does not match test: computed=%x, test=%x", gblock.Root().Bytes()[:6], t.json.Genesis.StateRoot[:6])
 	}
-
-	chain, err := kernel.NewBlockChain(db, nil, config, ethash.NewShared(), vm.Config{}, nil)
+	var engine consensus.Engine
+	if t.json.SealEngine == "NoProof" {
+		engine = ethash.NewFaker()
+	} else {
+		engine = ethash.NewShared()
+	}
+	chain, err := kernel.NewBlockChain(db, nil, config, engine, vm.Config{}, nil)
 	if err != nil {
 		return err
 	}

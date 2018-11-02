@@ -278,6 +278,28 @@ func TestClientSubscribeClose(t *testing.T) {
 	}
 }
 
+func TestClientCloseUnsubscribeRace(t *testing.T) {
+	service := &NotificationTestService{}
+	server := newTestServer("can", service)
+	defer server.Stop()
+
+	for i := 0; i < 20; i++ {
+		client := DialInProc(server)
+		nc := make(chan int)
+		sub, err := client.EthSubscribe(context.Background(), nc, "someSubscription", 3, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		go client.Close()
+		go sub.Unsubscribe()
+		select {
+		case <-sub.Err():
+		case <-time.After(5 * time.Second):
+			t.Fatal("subscription not closed within timeout")
+		}
+	}
+}
+
 func TestClientNotificationStorm(t *testing.T) {
 	server := newTestServer("can", new(NotificationTestService))
 	defer server.Stop()

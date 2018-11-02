@@ -227,11 +227,12 @@ type Tracer struct {
 	contractWrapper *contractWrapper
 	dbWrapper       *dbWrapper
 
-	pcValue    *uint
-	gasValue   *uint
-	costValue  *uint
-	depthValue *uint
-	errorValue *string
+	pcValue     *uint
+	gasValue    *uint
+	costValue   *uint
+	depthValue  *uint
+	errorValue  *string
+	refundValue *uint
 
 	ctx map[string]interface{}
 	err error
@@ -256,6 +257,7 @@ func New(code string) (*Tracer, error) {
 		gasValue:        new(uint),
 		costValue:       new(uint),
 		depthValue:      new(uint),
+		refundValue:     new(uint),
 	}
 	tracer.vm.PushGlobalGoFunction("toHex", func(ctx *duktape.Context) int {
 		ctx.PushString(hexutil.Encode(popSlice(ctx)))
@@ -369,6 +371,9 @@ func New(code string) (*Tracer, error) {
 	tracer.vm.PushGoFunction(func(ctx *duktape.Context) int { ctx.PushUint(*tracer.depthValue); return 1 })
 	tracer.vm.PutPropString(logObject, "getDepth")
 
+	tracer.vm.PushGoFunction(func(ctx *duktape.Context) int { ctx.PushUint(*tracer.refundValue); return 1 })
+	tracer.vm.PutPropString(logObject, "getRefund")
+
 	tracer.vm.PushGoFunction(func(ctx *duktape.Context) int {
 		if tracer.errorValue != nil {
 			ctx.PushString(*tracer.errorValue)
@@ -445,6 +450,7 @@ func (jst *Tracer) CaptureState(env *vm.EVM, pc uint64, op vm.OpCode, gas, cost 
 		*jst.gasValue = uint(gas)
 		*jst.costValue = uint(cost)
 		*jst.depthValue = uint(depth)
+		*jst.refundValue = uint(env.StateDB.GetRefund())
 
 		jst.errorValue = nil
 		if err != nil {

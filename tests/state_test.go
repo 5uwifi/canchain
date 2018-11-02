@@ -26,13 +26,11 @@ func TestState(t *testing.T) {
 	st.skipLoad(`^stTransactionTest/zeroSigTransa[^/]*\.json`)
 	st.fails(`^stRevertTest/RevertPrecompiledTouch\.json/EIP158`, "bug in test")
 	st.fails(`^stRevertTest/RevertPrecompiledTouch\.json/Byzantium`, "bug in test")
+	st.fails(`^stRevertTest/RevertPrecompiledTouch.json/Constantinople`, "bug in test")
 
 	st.walk(t, stateTestDir, func(t *testing.T, name string, test *StateTest) {
 		for _, subtest := range test.Subtests() {
 			subtest := subtest
-			if subtest.Fork == "Constantinople" {
-				continue
-			}
 			key := fmt.Sprintf("%s/%d", subtest.Fork, subtest.Index)
 			name := name + "/" + key
 			t.Run(key, func(t *testing.T) {

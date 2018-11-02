@@ -35,16 +35,17 @@ type LogConfig struct {
 //go:generate gencodec -type StructLog -field-override structLogMarshaling -out gen_structlog.go
 
 type StructLog struct {
-	Pc         uint64                      `json:"pc"`
-	Op         OpCode                      `json:"op"`
-	Gas        uint64                      `json:"gas"`
-	GasCost    uint64                      `json:"gasCost"`
-	Memory     []byte                      `json:"memory"`
-	MemorySize int                         `json:"memSize"`
-	Stack      []*big.Int                  `json:"stack"`
-	Storage    map[common.Hash]common.Hash `json:"-"`
-	Depth      int                         `json:"depth"`
-	Err        error                       `json:"-"`
+	Pc            uint64                      `json:"pc"`
+	Op            OpCode                      `json:"op"`
+	Gas           uint64                      `json:"gas"`
+	GasCost       uint64                      `json:"gasCost"`
+	Memory        []byte                      `json:"memory"`
+	MemorySize    int                         `json:"memSize"`
+	Stack         []*big.Int                  `json:"stack"`
+	Storage       map[common.Hash]common.Hash `json:"-"`
+	Depth         int                         `json:"depth"`
+	RefundCounter uint64                      `json:"refund"`
+	Err           error                       `json:"-"`
 }
 
 type structLogMarshaling struct {
@@ -129,7 +130,7 @@ func (l *StructLogger) CaptureState(env *EVM, pc uint64, op OpCode, gas, cost ui
 	if !l.cfg.DisableStorage {
 		storage = l.changedValues[contract.Address()].Copy()
 	}
-	log := StructLog{pc, op, gas, cost, mem, memory.Len(), stck, storage, depth, err}
+	log := StructLog{pc, op, gas, cost, mem, memory.Len(), stck, storage, depth, env.StateDB.GetRefund(), err}
 
 	l.logs = append(l.logs, log)
 	return nil

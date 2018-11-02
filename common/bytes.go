@@ -10,6 +10,14 @@ func ToHex(b []byte) string {
 	return "0x" + hex
 }
 
+func ToHexArray(b [][]byte) []string {
+	r := make([]string, len(b))
+	for i := range b {
+		r[i] = ToHex(b[i])
+	}
+	return r
+}
+
 func FromHex(s string) []byte {
 	if len(s) > 1 {
 		if s[0:2] == "0x" || s[0:2] == "0X" {
