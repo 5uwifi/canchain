@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/allegro/bigcache"
 	"github.com/5uwifi/canchain/candb"
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/lib/log4j"
@@ -14,6 +15,11 @@ import (
 )
 
 var (
+	memcacheCleanHitMeter   = metrics.NewRegisteredMeter("trie/memcache/clean/hit", nil)
+	memcacheCleanMissMeter  = metrics.NewRegisteredMeter("trie/memcache/clean/miss", nil)
+	memcacheCleanReadMeter  = metrics.NewRegisteredMeter("trie/memcache/clean/read", nil)
+	memcacheCleanWriteMeter = metrics.NewRegisteredMeter("trie/memcache/clean/write", nil)
+
 	memcacheFlushTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/flush/time", nil)
 	memcacheFlushNodesMeter = metrics.NewRegisteredMeter("trie/memcache/flush/nodes", nil)
 	memcacheFlushSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/flush/size", nil)
@@ -40,9 +46,10 @@ type DatabaseReader interface {
 type Database struct {
 	diskdb candb.Database
 
-	nodes  map[common.Hash]*cachedNode
-	oldest common.Hash
-	newest common.Hash
+	cleans  *bigcache.BigCache
+	dirties map[common.Hash]*cachedNode
+	oldest  common.Hash
+	newest  common.Hash
 
 	preimages map[common.Hash][]byte
 	seckeybuf [secureKeyLength]byte
@@ -55,7 +62,7 @@ type Database struct {
 	flushnodes uint64
 	flushsize  common.StorageSize
 
-	nodesSize     common.StorageSize
+	dirtiesSize   common.StorageSize
 	preimagesSize common.StorageSize
 
 	lock sync.RWMutex
@@ -211,9 +218,24 @@ func expandNode(hash hashNode, n node, cachegen uint16) node {
 }
 
 func NewDatabase(diskdb candb.Database) *Database {
+	return NewDatabaseWithCache(diskdb, 0)
+}
+
+func NewDatabaseWithCache(diskdb candb.Database, cache int) *Database {
+	var cleans *bigcache.BigCache
+	if cache > 0 {
+		cleans, _ = bigcache.NewBigCache(bigcache.Config{
+			Shards:             1024,
+			LifeWindow:         time.Hour,
+			MaxEntriesInWindow: cache * 1024,
+			MaxEntrySize:       512,
+			HardMaxCacheSize:   cache,
+		})
+	}
 	return &Database{
 		diskdb:    diskdb,
-		nodes:     map[common.Hash]*cachedNode{{}: {}},
+		cleans:    cleans,
+		dirties:   map[common.Hash]*cachedNode{{}: {}},
 		preimages: make(map[common.Hash][]byte),
 	}
 }
@@ -230,7 +252,7 @@ func (db *Database) InsertBlob(hash common.Hash, blob []byte) {
 }
 
 func (db *Database) insert(hash common.Hash, blob []byte, node node) {
-	if _, ok := db.nodes[hash]; ok {
+	if _, ok := db.dirties[hash]; ok {
 		return
 	}
 	entry := &cachedNode{
@@ -239,18 +261,18 @@ func (db *Database) insert(hash common.Hash, blob []byte, node node) {
 		flushPrev: db.newest,
 	}
 	for _, child := range entry.childs() {
-		if c := db.nodes[child]; c != nil {
+		if c := db.dirties[child]; c != nil {
 			c.parents++
 		}
 	}
-	db.nodes[hash] = entry
+	db.dirties[hash] = entry
 
 	if db.oldest == (common.Hash{}) {
 		db.oldest, db.newest = hash, hash
 	} else {
-		db.nodes[db.newest].flushNext, db.newest = hash, hash
+		db.dirties[db.newest].flushNext, db.newest = hash, hash
 	}
-	db.nodesSize += common.StorageSize(common.HashLength + entry.size)
+	db.dirtiesSize += common.StorageSize(common.HashLength + entry.size)
 }
 
 func (db *Database) insertPreimage(hash common.Hash, preimage []byte) {
@@ -262,29 +284,56 @@ func (db *Database) insertPreimage(hash common.Hash, preimage []byte) {
 }
 
 func (db *Database) node(hash common.Hash, cachegen uint16) node {
+	if db.cleans != nil {
+		if enc, err := db.cleans.Get(string(hash[:])); err == nil && enc != nil {
+			memcacheCleanHitMeter.Mark(1)
+			memcacheCleanReadMeter.Mark(int64(len(enc)))
+			return mustDecodeNode(hash[:], enc, cachegen)
+		}
+	}
 	db.lock.RLock()
-	node := db.nodes[hash]
+	dirty := db.dirties[hash]
 	db.lock.RUnlock()
 
-	if node != nil {
-		return node.obj(hash, cachegen)
+	if dirty != nil {
+		return dirty.obj(hash, cachegen)
 	}
 	enc, err := db.diskdb.Get(hash[:])
 	if err != nil || enc == nil {
 		return nil
 	}
+	if db.cleans != nil {
+		db.cleans.Set(string(hash[:]), enc)
+		memcacheCleanMissMeter.Mark(1)
+		memcacheCleanWriteMeter.Mark(int64(len(enc)))
+	}
 	return mustDecodeNode(hash[:], enc, cachegen)
 }
 
 func (db *Database) Node(hash common.Hash) ([]byte, error) {
+	if db.cleans != nil {
+		if enc, err := db.cleans.Get(string(hash[:])); err == nil && enc != nil {
+			memcacheCleanHitMeter.Mark(1)
+			memcacheCleanReadMeter.Mark(int64(len(enc)))
+			return enc, nil
+		}
+	}
 	db.lock.RLock()
-	node := db.nodes[hash]
+	dirty := db.dirties[hash]
 	db.lock.RUnlock()
 
-	if node != nil {
-		return node.rlp(), nil
+	if dirty != nil {
+		return dirty.rlp(), nil
 	}
-	return db.diskdb.Get(hash[:])
+	enc, err := db.diskdb.Get(hash[:])
+	if err == nil && enc != nil {
+		if db.cleans != nil {
+			db.cleans.Set(string(hash[:]), enc)
+			memcacheCleanMissMeter.Mark(1)
+			memcacheCleanWriteMeter.Mark(int64(len(enc)))
+		}
+	}
+	return enc, err
 }
 
 func (db *Database) preimage(hash common.Hash) ([]byte, error) {
@@ -308,8 +357,8 @@ func (db *Database) Nodes() []common.Hash {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	var hashes = make([]common.Hash, 0, len(db.nodes))
-	for hash := range db.nodes {
+	var hashes = make([]common.Hash, 0, len(db.dirties))
+	for hash := range db.dirties {
 		if hash != (common.Hash{}) {
 			hashes = append(hashes, hash)
 		}
@@ -325,17 +374,17 @@ func (db *Database) Reference(child common.Hash, parent common.Hash) {
 }
 
 func (db *Database) reference(child common.Hash, parent common.Hash) {
-	node, ok := db.nodes[child]
+	node, ok := db.dirties[child]
 	if !ok {
 		return
 	}
-	if db.nodes[parent].children == nil {
-		db.nodes[parent].children = make(map[common.Hash]uint16)
-	} else if _, ok = db.nodes[parent].children[child]; ok && parent != (common.Hash{}) {
+	if db.dirties[parent].children == nil {
+		db.dirties[parent].children = make(map[common.Hash]uint16)
+	} else if _, ok = db.dirties[parent].children[child]; ok && parent != (common.Hash{}) {
 		return
 	}
 	node.parents++
-	db.nodes[parent].children[child]++
+	db.dirties[parent].children[child]++
 }
 
 func (db *Database) Dereference(root common.Hash) {
@@ -346,23 +395,23 @@ func (db *Database) Dereference(root common.Hash) {
 	db.lock.Lock()
 	defer db.lock.Unlock()
 
-	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
+	nodes, storage, start := len(db.dirties), db.dirtiesSize, time.Now()
 	db.dereference(root, common.Hash{})
 
-	db.gcnodes += uint64(nodes - len(db.nodes))
-	db.gcsize += storage - db.nodesSize
+	db.gcnodes += uint64(nodes - len(db.dirties))
+	db.gcsize += storage - db.dirtiesSize
 	db.gctime += time.Since(start)
 
 	memcacheGCTimeTimer.Update(time.Since(start))
-	memcacheGCSizeMeter.Mark(int64(storage - db.nodesSize))
-	memcacheGCNodesMeter.Mark(int64(nodes - len(db.nodes)))
+	memcacheGCSizeMeter.Mark(int64(storage - db.dirtiesSize))
+	memcacheGCNodesMeter.Mark(int64(nodes - len(db.dirties)))
 
-	log4j.Debug("Dereferenced trie from memory database", "nodes", nodes-len(db.nodes), "size", storage-db.nodesSize, "time", time.Since(start),
-		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	log4j.Debug("Dereferenced trie from memory database", "nodes", nodes-len(db.dirties), "size", storage-db.dirtiesSize, "time", time.Since(start),
+		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.dirties), "livesize", db.dirtiesSize)
 }
 
 func (db *Database) dereference(child common.Hash, parent common.Hash) {
-	node := db.nodes[parent]
+	node := db.dirties[parent]
 
 	if node.children != nil && node.children[child] > 0 {
 		node.children[child]--
@@ -370,7 +419,7 @@ func (db *Database) dereference(child common.Hash, parent common.Hash) {
 			delete(node.children, child)
 		}
 	}
-	node, ok := db.nodes[child]
+	node, ok := db.dirties[child]
 	if !ok {
 		return
 	}
@@ -381,29 +430,29 @@ func (db *Database) dereference(child common.Hash, parent common.Hash) {
 		switch child {
 		case db.oldest:
 			db.oldest = node.flushNext
-			db.nodes[node.flushNext].flushPrev = common.Hash{}
+			db.dirties[node.flushNext].flushPrev = common.Hash{}
 		case db.newest:
 			db.newest = node.flushPrev
-			db.nodes[node.flushPrev].flushNext = common.Hash{}
+			db.dirties[node.flushPrev].flushNext = common.Hash{}
 		default:
-			db.nodes[node.flushPrev].flushNext = node.flushNext
-			db.nodes[node.flushNext].flushPrev = node.flushPrev
+			db.dirties[node.flushPrev].flushNext = node.flushNext
+			db.dirties[node.flushNext].flushPrev = node.flushPrev
 		}
 		for _, hash := range node.childs() {
 			db.dereference(hash, child)
 		}
-		delete(db.nodes, child)
-		db.nodesSize -= common.StorageSize(common.HashLength + int(node.size))
+		delete(db.dirties, child)
+		db.dirtiesSize -= common.StorageSize(common.HashLength + int(node.size))
 	}
 }
 
 func (db *Database) Cap(limit common.StorageSize) error {
 	db.lock.RLock()
 
-	nodes, storage, start := len(db.nodes), db.nodesSize, time.Now()
+	nodes, storage, start := len(db.dirties), db.dirtiesSize, time.Now()
 	batch := db.diskdb.NewBatch()
 
-	size := db.nodesSize + common.StorageSize((len(db.nodes)-1)*2*common.HashLength)
+	size := db.dirtiesSize + common.StorageSize((len(db.dirties)-1)*2*common.HashLength)
 
 	flushPreimages := db.preimagesSize > 4*1024*1024
 	if flushPreimages {
@@ -424,7 +473,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	}
 	oldest := db.oldest
 	for size > limit && oldest != (common.Hash{}) {
-		node := db.nodes[oldest]
+		node := db.dirties[oldest]
 		if err := batch.Put(oldest[:], node.rlp()); err != nil {
 			db.lock.RUnlock()
 			return err
@@ -455,25 +504,25 @@ func (db *Database) Cap(limit common.StorageSize) error {
 		db.preimagesSize = 0
 	}
 	for db.oldest != oldest {
-		node := db.nodes[db.oldest]
-		delete(db.nodes, db.oldest)
+		node := db.dirties[db.oldest]
+		delete(db.dirties, db.oldest)
 		db.oldest = node.flushNext
 
-		db.nodesSize -= common.StorageSize(common.HashLength + int(node.size))
+		db.dirtiesSize -= common.StorageSize(common.HashLength + int(node.size))
 	}
 	if db.oldest != (common.Hash{}) {
-		db.nodes[db.oldest].flushPrev = common.Hash{}
+		db.dirties[db.oldest].flushPrev = common.Hash{}
 	}
-	db.flushnodes += uint64(nodes - len(db.nodes))
-	db.flushsize += storage - db.nodesSize
+	db.flushnodes += uint64(nodes - len(db.dirties))
+	db.flushsize += storage - db.dirtiesSize
 	db.flushtime += time.Since(start)
 
 	memcacheFlushTimeTimer.Update(time.Since(start))
-	memcacheFlushSizeMeter.Mark(int64(storage - db.nodesSize))
-	memcacheFlushNodesMeter.Mark(int64(nodes - len(db.nodes)))
+	memcacheFlushSizeMeter.Mark(int64(storage - db.dirtiesSize))
+	memcacheFlushNodesMeter.Mark(int64(nodes - len(db.dirties)))
 
-	log4j.Debug("Persisted nodes from memory database", "nodes", nodes-len(db.nodes), "size", storage-db.nodesSize, "time", time.Since(start),
-		"flushnodes", db.flushnodes, "flushsize", db.flushsize, "flushtime", db.flushtime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	log4j.Debug("Persisted nodes from memory database", "nodes", nodes-len(db.dirties), "size", storage-db.dirtiesSize, "time", time.Since(start),
+		"flushnodes", db.flushnodes, "flushsize", db.flushsize, "flushtime", db.flushtime, "livenodes", len(db.dirties), "livesize", db.dirtiesSize)
 
 	return nil
 }
@@ -497,7 +546,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 			batch.Reset()
 		}
 	}
-	nodes, storage := len(db.nodes), db.nodesSize
+	nodes, storage := len(db.dirties), db.dirtiesSize
 	if err := db.commit(node, batch); err != nil {
 		log4j.Error("Failed to commit trie from trie database", "err", err)
 		db.lock.RUnlock()
@@ -519,15 +568,15 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	db.uncache(node)
 
 	memcacheCommitTimeTimer.Update(time.Since(start))
-	memcacheCommitSizeMeter.Mark(int64(storage - db.nodesSize))
-	memcacheCommitNodesMeter.Mark(int64(nodes - len(db.nodes)))
+	memcacheCommitSizeMeter.Mark(int64(storage - db.dirtiesSize))
+	memcacheCommitNodesMeter.Mark(int64(nodes - len(db.dirties)))
 
 	logger := log4j.Info
 	if !report {
 		logger = log4j.Debug
 	}
-	logger("Persisted trie from memory database", "nodes", nodes-len(db.nodes)+int(db.flushnodes), "size", storage-db.nodesSize+db.flushsize, "time", time.Since(start)+db.flushtime,
-		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	logger("Persisted trie from memory database", "nodes", nodes-len(db.dirties)+int(db.flushnodes), "size", storage-db.dirtiesSize+db.flushsize, "time", time.Since(start)+db.flushtime,
+		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.dirties), "livesize", db.dirtiesSize)
 
 	db.gcnodes, db.gcsize, db.gctime = 0, 0, 0
 	db.flushnodes, db.flushsize, db.flushtime = 0, 0, 0
@@ -536,7 +585,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 }
 
 func (db *Database) commit(hash common.Hash, batch candb.Batch) error {
-	node, ok := db.nodes[hash]
+	node, ok := db.dirties[hash]
 	if !ok {
 		return nil
 	}
@@ -558,44 +607,44 @@ func (db *Database) commit(hash common.Hash, batch candb.Batch) error {
 }
 
 func (db *Database) uncache(hash common.Hash) {
-	node, ok := db.nodes[hash]
+	node, ok := db.dirties[hash]
 	if !ok {
 		return
 	}
 	switch hash {
 	case db.oldest:
 		db.oldest = node.flushNext
-		db.nodes[node.flushNext].flushPrev = common.Hash{}
+		db.dirties[node.flushNext].flushPrev = common.Hash{}
 	case db.newest:
 		db.newest = node.flushPrev
-		db.nodes[node.flushPrev].flushNext = common.Hash{}
+		db.dirties[node.flushPrev].flushNext = common.Hash{}
 	default:
-		db.nodes[node.flushPrev].flushNext = node.flushNext
-		db.nodes[node.flushNext].flushPrev = node.flushPrev
+		db.dirties[node.flushPrev].flushNext = node.flushNext
+		db.dirties[node.flushNext].flushPrev = node.flushPrev
 	}
 	for _, child := range node.childs() {
 		db.uncache(child)
 	}
-	delete(db.nodes, hash)
-	db.nodesSize -= common.StorageSize(common.HashLength + int(node.size))
+	delete(db.dirties, hash)
+	db.dirtiesSize -= common.StorageSize(common.HashLength + int(node.size))
 }
 
 func (db *Database) Size() (common.StorageSize, common.StorageSize) {
 	db.lock.RLock()
 	defer db.lock.RUnlock()
 
-	var flushlistSize = common.StorageSize((len(db.nodes) - 1) * 2 * common.HashLength)
-	return db.nodesSize + flushlistSize, db.preimagesSize
+	var flushlistSize = common.StorageSize((len(db.dirties) - 1) * 2 * common.HashLength)
+	return db.dirtiesSize + flushlistSize, db.preimagesSize
 }
 
 func (db *Database) verifyIntegrity() {
 	reachable := map[common.Hash]struct{}{{}: {}}
 
-	for child := range db.nodes[common.Hash{}].children {
+	for child := range db.dirties[common.Hash{}].children {
 		db.accumulate(child, reachable)
 	}
 	unreachable := []string{}
-	for hash, node := range db.nodes {
+	for hash, node := range db.dirties {
 		if _, ok := reachable[hash]; !ok {
 			unreachable = append(unreachable, fmt.Sprintf("%x: {Node: %v, Parents: %d, Prev: %x, Next: %x}",
 				hash, node.node, node.parents, node.flushPrev, node.flushNext))
@@ -607,7 +656,7 @@ func (db *Database) verifyIntegrity() {
 }
 
 func (db *Database) accumulate(hash common.Hash, reachable map[common.Hash]struct{}) {
-	node, ok := db.nodes[hash]
+	node, ok := db.dirties[hash]
 	if !ok {
 		return
 	}

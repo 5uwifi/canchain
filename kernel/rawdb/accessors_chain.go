@@ -224,6 +224,13 @@ func DeleteTd(db DatabaseDeleter, hash common.Hash, number uint64) {
 	}
 }
 
+func HasReceipts(db DatabaseReader, hash common.Hash, number uint64) bool {
+	if has, err := db.Has(blockReceiptsKey(number, hash)); !has || err != nil {
+		return false
+	}
+	return true
+}
+
 func ReadReceipts(db DatabaseReader, hash common.Hash, number uint64) types.Receipts {
 	data, _ := db.Get(blockReceiptsKey(number, hash))
 	if len(data) == 0 {

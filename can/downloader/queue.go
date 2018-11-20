@@ -264,7 +264,7 @@ func (q *queue) Schedule(headers []*types.Header, from uint64) []*types.Header {
 			break
 		}
 		if _, ok := q.blockTaskPool[hash]; ok {
-			log4j.Warn("Header  already scheduled for block fetch", "number", header.Number, "hash", hash)
+			log4j.Warn("Header already scheduled for block fetch", "number", header.Number, "hash", hash)
 			continue
 		}
 		if _, ok := q.receiptTaskPool[hash]; ok {
@@ -538,10 +538,9 @@ func (q *queue) expire(timeout time.Duration, pendPool map[string]*fetchRequest,
 				taskQueue.Push(header, -int64(header.Number.Uint64()))
 			}
 			expiries[id] = len(request.Headers)
+
+			delete(pendPool, id)
 		}
-	}
-	for id := range expiries {
-		delete(pendPool, id)
 	}
 	return expiries
 }

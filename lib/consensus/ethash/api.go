@@ -14,27 +14,27 @@ type API struct {
 	ethash *Ethash
 }
 
-func (api *API) GetWork() ([3]string, error) {
+func (api *API) GetWork() ([4]string, error) {
 	if api.ethash.config.PowMode != ModeNormal && api.ethash.config.PowMode != ModeTest {
-		return [3]string{}, errors.New("not supported")
+		return [4]string{}, errors.New("not supported")
 	}
 
 	var (
-		workCh = make(chan [3]string, 1)
+		workCh = make(chan [4]string, 1)
 		errc   = make(chan error, 1)
 	)
 
 	select {
 	case api.ethash.fetchWorkCh <- &sealWork{errc: errc, res: workCh}:
 	case <-api.ethash.exitCh:
-		return [3]string{}, errEthashStopped
+		return [4]string{}, errEthashStopped
 	}
 
 	select {
 	case work := <-workCh:
 		return work, nil
 	case err := <-errc:
-		return [3]string{}, err
+		return [4]string{}, err
 	}
 }
 

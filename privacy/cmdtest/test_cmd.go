@@ -11,6 +11,7 @@ import (
 	"regexp"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 	"text/template"
 	"time"
@@ -33,6 +34,7 @@ type TestCmd struct {
 	stdout *bufio.Reader
 	stdin  io.WriteCloser
 	stderr *testlogger
+	Err error
 }
 
 func (tt *TestCmd) Run(name string, args ...string) {
@@ -140,11 +142,23 @@ func (tt *TestCmd) ExpectExit() {
 }
 
 func (tt *TestCmd) WaitExit() {
-	tt.cmd.Wait()
+	tt.Err = tt.cmd.Wait()
 }
 
 func (tt *TestCmd) Interrupt() {
-	tt.cmd.Process.Signal(os.Interrupt)
+	tt.Err = tt.cmd.Process.Signal(os.Interrupt)
+}
+
+func (tt *TestCmd) ExitStatus() int {
+	if tt.Err != nil {
+		exitErr := tt.Err.(*exec.ExitError)
+		if exitErr != nil {
+			if status, ok := exitErr.Sys().(syscall.WaitStatus); ok {
+				return status.ExitStatus()
+			}
+		}
+	}
+	return 0
 }
 
 func (tt *TestCmd) StderrText() string {

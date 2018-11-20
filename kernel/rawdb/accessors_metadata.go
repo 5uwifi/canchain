@@ -56,7 +56,7 @@ func ReadPreimage(db DatabaseReader, hash common.Hash) []byte {
 	return data
 }
 
-func WritePreimages(db DatabaseWriter, number uint64, preimages map[common.Hash][]byte) {
+func WritePreimages(db DatabaseWriter, preimages map[common.Hash][]byte) {
 	for hash, preimage := range preimages {
 		if err := db.Put(preimageKey(hash), preimage); err != nil {
 			log4j.Crit("Failed to store trie preimage", "err", err)

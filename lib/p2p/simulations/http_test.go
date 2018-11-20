@@ -2,6 +2,7 @@ package simulations
 
 import (
 	"context"
+	"flag"
 	"fmt"
 	"math/rand"
 	"net/http/httptest"
@@ -12,12 +13,25 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/lib/event"
+	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/lib/p2p"
 	"github.com/5uwifi/canchain/lib/p2p/cnode"
 	"github.com/5uwifi/canchain/lib/p2p/simulations/adapters"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/rpc"
+	colorable "github.com/mattn/go-colorable"
 )
+
+var (
+	loglevel = flag.Int("loglevel", 2, "verbosity of logs")
+)
+
+func init() {
+	flag.Parse()
+
+	log4j.PrintOrigins(true)
+	log4j.Root().SetHandler(log4j.LvlFilterHandler(log4j.Lvl(*loglevel), log4j.StreamHandler(colorable.NewColorableStderr(), log4j.TerminalFormat(true))))
+}
 
 type testService struct {
 	id cnode.ID
@@ -523,8 +537,25 @@ func TestHTTPNodeRPC(t *testing.T) {
 }
 
 func TestHTTPSnapshot(t *testing.T) {
-	_, s := testHTTPServer(t)
+	network, s := testHTTPServer(t)
 	defer s.Close()
+
+	var eventsDone = make(chan struct{})
+	count := 1
+	eventsDoneChan := make(chan *Event)
+	eventSub := network.Events().Subscribe(eventsDoneChan)
+	go func() {
+		defer eventSub.Unsubscribe()
+		for event := range eventsDoneChan {
+			if event.Type == EventTypeConn && !event.Control {
+				count--
+				if count == 0 {
+					eventsDone <- struct{}{}
+					return
+				}
+			}
+		}
+	}()
 
 	client := NewClient(s.URL)
 	nodeCount := 2
@@ -557,7 +588,7 @@ func TestHTTPSnapshot(t *testing.T) {
 		}
 		states[i] = state
 	}
-
+	<-eventsDone
 	snap, err := client.CreateSnapshot()
 	if err != nil {
 		t.Fatalf("error creating snapshot: %s", err)
@@ -569,9 +600,23 @@ func TestHTTPSnapshot(t *testing.T) {
 		}
 	}
 
-	_, s = testHTTPServer(t)
+	network2, s := testHTTPServer(t)
 	defer s.Close()
 	client = NewClient(s.URL)
+	count = 1
+	eventSub = network2.Events().Subscribe(eventsDoneChan)
+	go func() {
+		defer eventSub.Unsubscribe()
+		for event := range eventsDoneChan {
+			if event.Type == EventTypeConn && !event.Control {
+				count--
+				if count == 0 {
+					eventsDone <- struct{}{}
+					return
+				}
+			}
+		}
+	}()
 
 	events := make(chan *Event, 100)
 	var opts SubscribeOpts
@@ -584,6 +629,7 @@ func TestHTTPSnapshot(t *testing.T) {
 	if err := client.LoadSnapshot(snap); err != nil {
 		t.Fatalf("error loading snapshot: %s", err)
 	}
+	<-eventsDone
 
 	net, err := client.GetNetwork()
 	if err != nil {
@@ -607,6 +653,9 @@ func TestHTTPSnapshot(t *testing.T) {
 	}
 	if conn.Other.String() != nodes[1].ID {
 		t.Fatalf("expected connection to have other=%q, got other=%q", nodes[1].ID, conn.Other)
+	}
+	if !conn.Up {
+		t.Fatal("should be up")
 	}
 
 	for i, node := range nodes {

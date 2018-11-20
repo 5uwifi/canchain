@@ -129,7 +129,7 @@ func New(ctx *node.ServiceContext, config *Config) (*CANChain, error) {
 			EWASMInterpreter:        config.EWASMInterpreter,
 			EVMInterpreter:          config.EVMInterpreter,
 		}
-		cacheConfig = &kernel.CacheConfig{Disabled: config.NoPruning, TrieNodeLimit: config.TrieCache, TrieTimeLimit: config.TrieTimeout}
+		cacheConfig = &kernel.CacheConfig{Disabled: config.NoPruning, TrieCleanLimit: config.TrieCleanCache, TrieDirtyLimit: config.TrieDirtyCache, TrieTimeLimit: config.TrieTimeout}
 	)
 	can.blockchain, err = kernel.NewBlockChain(chainDb, cacheConfig, can.chainConfig, can.engine, vmConfig, can.shouldPreserve)
 	if err != nil {

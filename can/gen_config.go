@@ -28,7 +28,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 		SkipBcVersionCheck      bool `toml:"-"`
 		DatabaseHandles         int  `toml:"-"`
 		DatabaseCache           int
-		TrieCache               int
+		TrieCleanCache          int
+		TrieDirtyCache          int
 		TrieTimeout             time.Duration
 		Canerbase               common.Address `toml:",omitempty"`
 		MinerNotify             []string       `toml:",omitempty"`
@@ -56,7 +57,8 @@ func (c Config) MarshalTOML() (interface{}, error) {
 	enc.SkipBcVersionCheck = c.SkipBcVersionCheck
 	enc.DatabaseHandles = c.DatabaseHandles
 	enc.DatabaseCache = c.DatabaseCache
-	enc.TrieCache = c.TrieCache
+	enc.TrieCleanCache = c.TrieCleanCache
+	enc.TrieDirtyCache = c.TrieDirtyCache
 	enc.TrieTimeout = c.TrieTimeout
 	enc.Canerbase = c.Canerbase
 	enc.MinerNotify = c.MinerNotify
@@ -88,7 +90,8 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 		SkipBcVersionCheck      *bool `toml:"-"`
 		DatabaseHandles         *int  `toml:"-"`
 		DatabaseCache           *int
-		TrieCache               *int
+		TrieCleanCache          *int
+		TrieDirtyCache          *int
 		TrieTimeout             *time.Duration
 		Canerbase               *common.Address `toml:",omitempty"`
 		MinerNotify             []string        `toml:",omitempty"`
@@ -137,8 +140,11 @@ func (c *Config) UnmarshalTOML(unmarshal func(interface{}) error) error {
 	if dec.DatabaseCache != nil {
 		c.DatabaseCache = *dec.DatabaseCache
 	}
-	if dec.TrieCache != nil {
-		c.TrieCache = *dec.TrieCache
+	if dec.TrieCleanCache != nil {
+		c.TrieCleanCache = *dec.TrieCleanCache
+	}
+	if dec.TrieDirtyCache != nil {
+		c.TrieDirtyCache = *dec.TrieDirtyCache
 	}
 	if dec.TrieTimeout != nil {
 		c.TrieTimeout = *dec.TrieTimeout

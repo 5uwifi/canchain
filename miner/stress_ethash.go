@@ -4,7 +4,6 @@ package main
 
 import (
 	"crypto/ecdsa"
-	"fmt"
 	"io/ioutil"
 	"math/big"
 	"math/rand"
@@ -24,7 +23,7 @@ import (
 	"github.com/5uwifi/canchain/lib/log4j"
 	"github.com/5uwifi/canchain/node"
 	"github.com/5uwifi/canchain/lib/p2p"
-	"github.com/5uwifi/canchain/lib/p2p/discover"
+	"github.com/5uwifi/canchain/lib/p2p/ccnode"
 	"github.com/5uwifi/canchain/params"
 )
 
@@ -42,10 +41,10 @@ func main() {
 
 	var (
 		nodes  []*node.Node
-		enodes []string
+		enodes []*ccnode.Node
 	)
 	for i := 0; i < 4; i++ {
-		node, err := makeMiner(genesis, enodes)
+		node, err := makeMiner(genesis)
 		if err != nil {
 			panic(err)
 		}
@@ -54,17 +53,11 @@ func main() {
 		for node.Server().NodeInfo().Ports.Listener == 0 {
 			time.Sleep(250 * time.Millisecond)
 		}
-		for _, ccnode := range enodes {
-			ccnode, err := discover.ParseNode(ccnode)
-			if err != nil {
-				panic(err)
-			}
-			node.Server().AddPeer(ccnode)
+		for _, n := range enodes {
+			node.Server().AddPeer(n)
 		}
 		nodes = append(nodes, node)
-
-		ccnode := fmt.Sprintf("ccnode://%s@127.0.0.1:%d", node.Server().NodeInfo().ID, node.Server().NodeInfo().Ports.Listener)
-		enodes = append(enodes, ccnode)
+		enodes = append(enodes, node.Server().Self())
 
 		store := node.AccountManager().Backends(keystore.KeyStoreType)[0].(*keystore.KeyStore)
 		if _, err := store.NewAccount(""); err != nil {
@@ -124,7 +117,7 @@ func makeGenesis(faucets []*ecdsa.PrivateKey) *kernel.Genesis {
 	return genesis
 }
 
-func makeMiner(genesis *kernel.Genesis, nodes []string) (*node.Node, error) {
+func makeMiner(genesis *kernel.Genesis) (*node.Node, error) {
 	datadir, _ := ioutil.TempDir("", "")
 
 	config := &node.Config{

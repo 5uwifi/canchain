@@ -102,7 +102,7 @@ func testMissingNode(t *testing.T, memonly bool) {
 
 	hash := common.HexToHash("0xe1d943cc8f061a0c0b98162830b970395ac9315654824bf21b73b891365262f9")
 	if memonly {
-		delete(triedb.nodes, hash)
+		delete(triedb.dirties, hash)
 	} else {
 		diskdb.Delete(hash[:])
 	}
@@ -311,14 +311,15 @@ func TestCacheUnload(t *testing.T) {
 	root, _ := trie.Commit(nil)
 	trie.db.Commit(root, true)
 
-	db := &countingDB{Database: trie.db.diskdb, gets: make(map[string]int)}
-	trie, _ = New(root, NewDatabase(db))
+	diskdb := &countingDB{Database: trie.db.diskdb, gets: make(map[string]int)}
+	triedb := NewDatabase(diskdb)
+	trie, _ = New(root, triedb)
 	trie.SetCacheLimit(5)
 	for i := 0; i < 12; i++ {
 		getString(trie, key1)
 		trie.Commit(nil)
 	}
-	for dbkey, count := range db.gets {
+	for dbkey, count := range diskdb.gets {
 		if count != 2 {
 			t.Errorf("db key %x loaded %d times, want %d times", []byte(dbkey), count, 2)
 		}

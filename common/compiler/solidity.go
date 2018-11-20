@@ -15,8 +15,9 @@ import (
 var versionRegexp = regexp.MustCompile(`([0-9]+)\.([0-9]+)\.([0-9]+)`)
 
 type Contract struct {
-	Code string       `json:"code"`
-	Info ContractInfo `json:"info"`
+	Code        string       `json:"code"`
+	RuntimeCode string       `json:"runtime-code"`
+	Info        ContractInfo `json:"info"`
 }
 
 type ContractInfo struct {
@@ -25,6 +26,8 @@ type ContractInfo struct {
 	LanguageVersion string      `json:"languageVersion"`
 	CompilerVersion string      `json:"compilerVersion"`
 	CompilerOptions string      `json:"compilerOptions"`
+	SrcMap          string      `json:"srcMap"`
+	SrcMapRuntime   string      `json:"srcMapRuntime"`
 	AbiDefinition   interface{} `json:"abiDefinition"`
 	UserDoc         interface{} `json:"userDoc"`
 	DeveloperDoc    interface{} `json:"developerDoc"`
@@ -38,14 +41,16 @@ type Solidity struct {
 
 type solcOutput struct {
 	Contracts map[string]struct {
-		Bin, Abi, Devdoc, Userdoc, Metadata string
+		BinRuntime                                  string `json:"bin-runtime"`
+		SrcMapRuntime                               string `json:"srcmap-runtime"`
+		Bin, SrcMap, Abi, Devdoc, Userdoc, Metadata string
 	}
 	Version string
 }
 
 func (s *Solidity) makeArgs() []string {
 	p := []string{
-		"--combined-json", "bin,abi,userdoc,devdoc",
+		"--combined-json", "bin,bin-runtime,srcmap,srcmap-runtime,abi,userdoc,devdoc",
 		"--optimize",
 	}
 	if s.Major > 0 || s.Minor > 4 || s.Patch > 6 {
@@ -145,13 +150,16 @@ func ParseCombinedJSON(combinedJSON []byte, source string, languageVersion strin
 			return nil, fmt.Errorf("solc: error reading dev doc: %v", err)
 		}
 		contracts[name] = &Contract{
-			Code: "0x" + info.Bin,
+			Code:        "0x" + info.Bin,
+			RuntimeCode: "0x" + info.BinRuntime,
 			Info: ContractInfo{
 				Source:          source,
 				Language:        "Solidity",
 				LanguageVersion: languageVersion,
 				CompilerVersion: compilerVersion,
 				CompilerOptions: compilerOptions,
+				SrcMap:          info.SrcMap,
+				SrcMapRuntime:   info.SrcMapRuntime,
 				AbiDefinition:   abi,
 				UserDoc:         userdoc,
 				DeveloperDoc:    devdoc,

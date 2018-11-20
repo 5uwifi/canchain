@@ -228,12 +228,12 @@ func ImportPreimages(db *candb.LDBDatabase, fn string) error {
 		}
 		preimages[crypto.Keccak256Hash(blob)] = common.CopyBytes(blob)
 		if len(preimages) > 1024 {
-			rawdb.WritePreimages(db, 0, preimages)
+			rawdb.WritePreimages(db, preimages)
 			preimages = make(map[common.Hash][]byte)
 		}
 	}
 	if len(preimages) > 0 {
-		rawdb.WritePreimages(db, 0, preimages)
+		rawdb.WritePreimages(db, preimages)
 	}
 	return nil
 }

@@ -122,7 +122,7 @@ func NewChtIndexer(db candb.Database, odr OdrBackend, size, confirms uint64) *ke
 		diskdb:      db,
 		odr:         odr,
 		trieTable:   trieTable,
-		triedb:      trie.NewDatabase(trieTable),
+		triedb:      trie.NewDatabaseWithCache(trieTable, 1),
 		sectionSize: size,
 	}
 	return kernel.NewChainIndexer(db, candb.NewTable(db, "chtIndex-"), backend, size, confirms, time.Millisecond*100, "cht")
@@ -233,7 +233,7 @@ func NewBloomTrieIndexer(db candb.Database, odr OdrBackend, parentSize, size uin
 		diskdb:     db,
 		odr:        odr,
 		trieTable:  trieTable,
-		triedb:     trie.NewDatabase(trieTable),
+		triedb:     trie.NewDatabaseWithCache(trieTable, 1),
 		parentSize: parentSize,
 		size:       size,
 	}

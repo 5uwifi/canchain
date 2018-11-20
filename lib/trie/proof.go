@@ -41,6 +41,8 @@ func (t *Trie) Prove(key []byte, fromLevel uint, proofDb candb.Putter) error {
 		}
 	}
 	hasher := newHasher(0, 0, nil)
+	defer returnHasherToPool(hasher)
+
 	for i, n := range nodes {
 		n, _, _ = hasher.hashChildren(n, nil)
 		hn, _ := hasher.store(n, nil, false)

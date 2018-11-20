@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/5uwifi/canchain/common"
+	"github.com/5uwifi/canchain/common/hexutil"
 	"github.com/5uwifi/canchain/kernel/types"
 	"github.com/5uwifi/canchain/lib/consensus"
 	"github.com/5uwifi/canchain/lib/log4j"
@@ -153,7 +154,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 
 		results      chan<- *types.Block
 		currentBlock *types.Block
-		currentWork  [3]string
+		currentWork  [4]string
 
 		notifyTransport = &http.Transport{}
 		notifyClient    = &http.Client{
@@ -190,6 +191,7 @@ func (ethash *Ethash) remote(notify []string, noverify bool) {
 		currentWork[0] = hash.Hex()
 		currentWork[1] = common.BytesToHash(SeedHash(block.NumberU64())).Hex()
 		currentWork[2] = common.BytesToHash(new(big.Int).Div(two256, block.Difficulty()).Bytes()).Hex()
+		currentWork[3] = hexutil.EncodeBig(block.Number())
 
 		currentBlock = block
 		works[hash] = block

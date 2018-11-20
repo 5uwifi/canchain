@@ -7,7 +7,7 @@ import (
 const (
 	VersionMajor = 1
 	VersionMinor = 8
-	VersionPatch = 18
+	VersionPatch = 19
 	VersionMeta  = "unstable"
 )
 

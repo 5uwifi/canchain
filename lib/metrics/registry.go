@@ -266,7 +266,10 @@ func (r *PrefixedRegistry) UnregisterAll() {
 	r.underlying.UnregisterAll()
 }
 
-var DefaultRegistry Registry = NewRegistry()
+var (
+	DefaultRegistry   = NewRegistry()
+	EphemeralRegistry = NewRegistry()
+)
 
 func Each(f func(string, interface{})) {
 	DefaultRegistry.Each(f)

@@ -353,7 +353,7 @@ type hashrate struct {
 
 type sealWork struct {
 	errc chan error
-	res  chan [3]string
+	res  chan [4]string
 }
 
 type Ethash struct {

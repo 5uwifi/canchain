@@ -44,9 +44,13 @@ type Trie interface {
 }
 
 func NewDatabase(db candb.Database) Database {
+	return NewDatabaseWithCache(db, 0)
+}
+
+func NewDatabaseWithCache(db candb.Database, cache int) Database {
 	csc, _ := lru.New(codeSizeCacheSize)
 	return &cachingDB{
-		db:            trie.NewDatabase(db),
+		db:            trie.NewDatabaseWithCache(db, cache),
 		codeSizeCache: csc,
 	}
 }

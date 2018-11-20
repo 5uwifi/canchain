@@ -29,8 +29,8 @@ var (
 	egressConnectMeter  = metrics.NewRegisteredMeter(MetricsOutboundConnects, nil)
 	egressTrafficMeter  = metrics.NewRegisteredMeter(MetricsOutboundTraffic, nil)
 
-	PeerIngressRegistry = metrics.NewPrefixedChildRegistry(metrics.DefaultRegistry, MetricsInboundTraffic+"/")
-	PeerEgressRegistry  = metrics.NewPrefixedChildRegistry(metrics.DefaultRegistry, MetricsOutboundTraffic+"/")
+	PeerIngressRegistry = metrics.NewPrefixedChildRegistry(metrics.EphemeralRegistry, MetricsInboundTraffic+"/")
+	PeerEgressRegistry  = metrics.NewPrefixedChildRegistry(metrics.EphemeralRegistry, MetricsOutboundTraffic+"/")
 
 	meteredPeerFeed  event.Feed
 	meteredPeerCount int32
@@ -49,7 +49,7 @@ const (
 type MeteredPeerEvent struct {
 	Type    MeteredPeerEventType
 	IP      net.IP
-	ID      string
+	ID      cnode.ID
 	Elapsed time.Duration
 	Ingress uint64
 	Egress  uint64
@@ -64,7 +64,7 @@ type meteredConn struct {
 
 	connected time.Time
 	ip        net.IP
-	id        string
+	id        cnode.ID
 
 	trafficMetered bool
 	ingressMeter   metrics.Meter
@@ -115,8 +115,7 @@ func (c *meteredConn) Write(b []byte) (n int, err error) {
 	return n, err
 }
 
-func (c *meteredConn) handshakeDone(nodeID cnode.ID) {
-	id := nodeID.String()
+func (c *meteredConn) handshakeDone(id cnode.ID) {
 	if atomic.AddInt32(&meteredPeerCount, 1) >= MeteredPeerLimit {
 		atomic.AddInt32(&meteredPeerCount, -1)
 		c.lock.Lock()
@@ -124,7 +123,7 @@ func (c *meteredConn) handshakeDone(nodeID cnode.ID) {
 		c.lock.Unlock()
 		log4j.Warn("Metered peer count reached the limit")
 	} else {
-		key := fmt.Sprintf("%s/%s", c.ip, id)
+		key := fmt.Sprintf("%s/%s", c.ip, id.String())
 		c.lock.Lock()
 		c.id, c.trafficMetered = id, true
 		c.ingressMeter = metrics.NewRegisteredMeter(key, PeerIngressRegistry)
@@ -142,7 +141,7 @@ func (c *meteredConn) handshakeDone(nodeID cnode.ID) {
 func (c *meteredConn) Close() error {
 	err := c.Conn.Close()
 	c.lock.RLock()
-	if c.id == "" {
+	if c.id == (cnode.ID{}) {
 		c.lock.RUnlock()
 		meteredPeerFeed.Send(MeteredPeerEvent{
 			Type:    PeerHandshakeFailed,

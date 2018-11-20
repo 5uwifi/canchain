@@ -100,7 +100,7 @@ func (api *PrivateDebugAPI) traceChain(ctx context.Context, start, end *types.Bl
 	sub := notifier.CreateSubscription()
 
 	origin := start.NumberU64()
-	database := state.NewDatabase(api.can.ChainDb())
+	database := state.NewDatabaseWithCache(api.can.ChainDb(), 16)
 
 	if number := start.NumberU64(); number > 0 {
 		start = api.can.blockchain.GetBlock(start.ParentHash(), start.NumberU64()-1)
@@ -403,7 +403,7 @@ func (api *PrivateDebugAPI) computeStateDB(block *types.Block, reexec uint64) (*
 		return statedb, nil
 	}
 	origin := block.NumberU64()
-	database := state.NewDatabase(api.can.ChainDb())
+	database := state.NewDatabaseWithCache(api.can.ChainDb(), 16)
 
 	for i := uint64(0); i < reexec; i++ {
 		block = api.can.blockchain.GetBlock(block.ParentHash(), block.NumberU64()-1)

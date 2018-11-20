@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
-	"sync"
 
 	"github.com/5uwifi/canchain/common"
 	"github.com/5uwifi/canchain/kernel/types"
@@ -54,8 +53,6 @@ type StateDB struct {
 	journal        *journal
 	validRevisions []revision
 	nextRevisionId int
-
-	lock sync.Mutex
 }
 
 func New(root common.Hash, db Database) (*StateDB, error) {
@@ -410,9 +407,6 @@ func (db *StateDB) ForEachStorage(addr common.Address, cb func(key, value common
 }
 
 func (self *StateDB) Copy() *StateDB {
-	self.lock.Lock()
-	defer self.lock.Unlock()
-
 	state := &StateDB{
 		db:                self.db,
 		trie:              self.db.CopyTrie(self.trie),
