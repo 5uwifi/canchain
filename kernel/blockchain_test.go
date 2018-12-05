@@ -498,7 +498,7 @@ func testInsertNonceError(t *testing.T, full bool) {
 			failRes, err = blockchain.InsertHeaderChain(headers, 1)
 		}
 		if failRes != failAt {
-			t.Errorf("test %d: failure index mismatch: have %d, want %d", i, failRes, failAt)
+			t.Errorf("test %d: failure (%v) index mismatch: have %d, want %d", i, err, failRes, failAt)
 		}
 		for j := 0; j < i-failAt; j++ {
 			if full {
@@ -1196,7 +1196,7 @@ func TestLargeReorgTrieGC(t *testing.T) {
 		t.Fatalf("failed to insert shared chain: %v", err)
 	}
 	if _, err := chain.InsertChain(original); err != nil {
-		t.Fatalf("failed to insert shared chain: %v", err)
+		t.Fatalf("failed to insert original chain: %v", err)
 	}
 	if node, _ := chain.stateCache.TrieDB().Node(shared[len(shared)-1].Root()); node != nil {
 		t.Fatalf("common-but-old ancestor still cache")

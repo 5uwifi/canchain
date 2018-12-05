@@ -106,7 +106,7 @@ type cachedNode struct {
 	node node
 	size uint16
 
-	parents  uint16
+	parents  uint32
 	children map[common.Hash]uint16
 
 	flushPrev common.Hash

@@ -46,7 +46,7 @@ var (
 		EIP155Block:         big.NewInt(0),
 		EIP158Block:         big.NewInt(0),
 		ByzantiumBlock:      big.NewInt(0),
-		ConstantinopleBlock: big.NewInt(4230000),
+		ConstantinopleBlock: nil,
 		Clique:              &CliqueConfig{Period: 15, Epoch: 30000},
 	}
 
